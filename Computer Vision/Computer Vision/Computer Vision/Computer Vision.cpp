@@ -10,8 +10,9 @@ int main()
 		std::cout << "failed to open img.jpg" << std::endl;
 	else
 		std::cout << "img.jpg loaded OK" << std::endl;
+	Mat img2 = img;
 	namedWindow("image", WINDOW_NORMAL);
-	imshow("image", img);
+	imshow("image", img2);
 	waitKey(0);
 	return 0;
 }
