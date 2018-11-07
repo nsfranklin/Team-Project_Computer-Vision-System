@@ -1,6 +1,0 @@
-﻿  Computer Vision.cpp
-c:\git\team-project_computer-vision-system\computer vision\computer vision\computer vision\computer vision.cpp(59): warning C4477: 'printf' : format string '%d' requires an argument of type 'int', but variadic argument 1 has type 'time_t'
-  c:\git\team-project_computer-vision-system\computer vision\computer vision\computer vision\computer vision.cpp(59): note: consider using '%lld' in the format string
-  c:\git\team-project_computer-vision-system\computer vision\computer vision\computer vision\computer vision.cpp(59): note: consider using '%Id' in the format string
-  c:\git\team-project_computer-vision-system\computer vision\computer vision\computer vision\computer vision.cpp(59): note: consider using '%I64d' in the format string
-  Computer Vision.vcxproj -> C:\Git\Team-Project_Computer-Vision-System\Computer Vision\Computer Vision\x64\Debug\Computer Vision.exe
