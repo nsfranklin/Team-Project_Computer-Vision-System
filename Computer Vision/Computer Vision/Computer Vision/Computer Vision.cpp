@@ -16,36 +16,25 @@ int main()
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
 	loadImageSet(&image_array, 3);
-	std::cout << "load complete" << std::endl;
 	if (image_array.empty())
-		std::cout << "failed to open img.jpg" << std::endl;
+		std::cout << "Failed to load image set" << std::endl; //the start of error handeling
 	else
-		std::cout << "img.jpg loaded OK" << std::endl;
-	//Mat img = image_array[0];
-	//Mat img1 = image_array[1];
-	//namedWindow("image", WINDOW_NORMAL);
-	//imshow("image", img);
-	//namedWindow("image2", WINDOW_NORMAL);
-	//imshow("image2", image_array[1]);
-	vector<vector<KeyPoint>> KeyPoints;
+		std::cout << "Image Set Loaded" << std::endl;
+
+	vector<vector<KeyPoint>> KeyPoints;   
 
 	featureMatching(image_array, &KeyPoints);
+	std::cout << "Keypoint Detection complete" << std::endl;
 
-	std::cout << "feature matching complete" << std::endl;
-
-	Mat sampleImage = image_array[0]; //sample to show keypoints
-
-	std::cout << "sample loaded" << std::endl;
-
-	Mat sampleWithKeyPoints; //output with keypoints
-
-	int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
-
+	Mat sampleImage = image_array[0];								//sample to show keypoints
+	std::cout << "Sample Image Loaded" << std::endl;
+	Mat sampleWithKeyPoints;										//output image with rich keypoints
+	int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS; 
 	drawKeypoints(sampleImage, KeyPoints[0], sampleWithKeyPoints, Scalar::all(-1), flags);
-
 	namedWindow("image", WINDOW_NORMAL);
 	imshow("image", sampleWithKeyPoints);
 
+	std::cout << "Keypoints detected in image 0.jgp:" << std::endl;
 	std::cout << KeyPoints[0].size() << std::endl;
 
 	waitKey(0);
@@ -57,19 +46,17 @@ int main()
 
 
 	printf("time elapsed: %d\n", (time(NULL) - start));
-	
 
 	return 0;
 }
 
 
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to disingue image sets. relation to the same listing
-	String temp;											  //c is intened for chessboard calibration images
+	String temp;													  //c is intened for chessboard calibration images
 	vector<Mat> temp2;
 	
 	for (int i = 0; i < Length; i++) {
 		temp = prefix + to_string(i) + ".jpg";
-	std::cout << temp << std::endl;
 		temp2.push_back(imread(temp));
 	}
 
@@ -85,11 +72,9 @@ void loadImageSet(vector<Mat> *image_set, int Length) {
 		temp = to_string(i) + ".jpg";
 		std::cout << temp << std::endl;
 		temp2.push_back(imread(temp));
-		std::cout << temp2.size() << std::endl;
 	}
-
 	*image_set = temp2;
-
+	return;
 }
 
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec) {
@@ -106,7 +91,7 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 
 	Ptr<ORB> orb = cv::ORB::create(nfeature, scaleFactor, edgeThreshold, firstLevel, WTA_K, scoreType, patchSize, fastThreshold);
 
-	std::cout << "orb created" << std::endl;
+	std::cout << "Detector Constructed" << std::endl;
 
 	orb->detect(image_set, temp, mask);
 	*keyPointVec = temp;
