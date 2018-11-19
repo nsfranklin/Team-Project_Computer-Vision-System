@@ -2,17 +2,24 @@
 #include<opencv2/opencv.hpp>
 #include<iostream>
 
+#include<mysqlx/xdevapi.h>
 
 
 using namespace std;
 using namespace cv;
+using namespace ::mysqlx;
 
 void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
+void objToMySQL();
 
 int main()
 {
+	void objToMySQL();
+
+	std::cout << "IT WORKED";
+
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
 	loadImageSet(&image_array, 3);
@@ -48,6 +55,16 @@ int main()
 	printf("time elapsed: %d\n", (time(NULL) - start));
 
 	return 0;
+}
+
+void objToMySQL() {
+
+	Session sess("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com", 3060, "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+
+	Schema db = sess.getSchema("");
+
+	Collection myColl = db.getCollection(db, "my_collection");
+
 }
 
 
