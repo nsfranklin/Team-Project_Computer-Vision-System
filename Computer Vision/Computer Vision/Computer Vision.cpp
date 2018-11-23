@@ -4,6 +4,11 @@
 
 #include<mysqlx/xdevapi.h>
 
+#include <jdbc/mysql_connection.h>
+#include <jdbc/cppconn/driver.h>
+#include <jdbc/cppconn/exception.h>
+#include <jdbc/cppconn/resultset.h>
+#include <jdbc/cppconn/statement.h>
 
 using namespace std;
 using namespace cv;
@@ -12,17 +17,14 @@ using namespace ::mysqlx;
 void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
-void objToMySQL();
+void objToMySQL(vector<Mat> *image_set);
 
 int main()
 {
-	void objToMySQL();
-
-	std::cout << "IT WORKED";
-
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
 	loadImageSet(&image_array, 3);
+	objToMySQL(&image_array);
 	if (image_array.empty())
 		std::cout << "Failed to load image set" << std::endl; //the start of error handeling
 	else
@@ -52,19 +54,85 @@ int main()
 	// triangulatePoints();
 
 
-	printf("time elapsed: %d\n", (time(NULL) - start));
+	//printf("time elapsed: %d\n", (time(NULL) - start));
 
 	return 0;
 }
 
-void objToMySQL() {
+void objToMySQL(vector<Mat> *image_set) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::Statement *stmt;
+		sql::ResultSet *res;
 
-	Session sess("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com", 3060, "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Create a connection */
+		driver = get_driver_instance();
 
-	Schema db = sess.getSchema("");
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+		
 
-	Collection myColl = db.getCollection(db, "my_collection");
+		stmt = con->createStatement();
+		stmt->executeQuery("SELECT * AS _message");
+	
 
+
+		//delete res;
+		delete stmt;
+		delete con;
+		
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+}
+
+void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::Statement *stmt;
+		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+
+
+		stmt = con->createStatement();
+		stmt->executeQuery("SELECT  AS _message");  //selected images for a required mesh
+
+
+
+		//delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
 }
 
 
