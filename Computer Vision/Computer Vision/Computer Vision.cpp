@@ -9,6 +9,7 @@
 #include <jdbc/cppconn/exception.h>
 #include <jdbc/cppconn/resultset.h>
 #include <jdbc/cppconn/statement.h>
+#include <jdbc/cppconn/prepared_statement.h>
 
 using namespace std;
 using namespace cv;
@@ -18,13 +19,16 @@ void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
 void objToMySQL(vector<Mat> *image_set);
+void insertImages(vector<Mat> *image_set, int listingID, int length);
 
 int main()
 {
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
-	loadImageSet(&image_array, 3);
-	objToMySQL(&image_array);
+	loadImageSet(&image_array, 40);
+	insertImages(&image_array, 8 , 40);
+	std::cout << "Images Inserted" << std::endl;
+	//objToMySQL(&image_array);
 	if (image_array.empty())
 		std::cout << "Failed to load image set" << std::endl; //the start of error handeling
 	else
@@ -59,6 +63,59 @@ int main()
 	return 0;
 }
 
+void insertImages(vector<Mat> *image_set, int listingID, int length) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+
+		vector<uchar> buf = {};
+		stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, ListingID) VALUES(? , ? , ? )");
+
+		if (image_set->empty()) {
+			std::cout << "IMAGE SET NULL!" << std::endl;
+		}
+
+		for(int i = 1; i < length + 1; i++) {
+			imencode(".jpg", image_set->at(i - 1), buf); //defi
+			std::cout << "encoded" << std::endl;
+			std::string bufstr;
+			for (auto letter : buf)
+				bufstr += letter;
+			std::cout << "streamed" << std::endl;
+			std::istringstream str(bufstr);
+			stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, ListingID) VALUES(? , ? , ? )");
+			stmt->setInt(1, i);
+			stmt->setBlob(2, &str);
+			stmt->setInt(3, listingID);
+			stmt->execute();
+		}
+
+		delete stmt;
+		delete con;
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+}
+
 void objToMySQL(vector<Mat> *image_set) {
 	try {
 		sql::Driver *driver;
@@ -77,11 +134,8 @@ void objToMySQL(vector<Mat> *image_set) {
 			std::cout << "Connection Open" << std::endl;
 		}
 		
-
 		stmt = con->createStatement();
 		stmt->executeQuery("SELECT * AS _message");
-	
-
 
 		//delete res;
 		delete stmt;
@@ -135,7 +189,6 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID
 	}
 }
 
-
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to disingue image sets. relation to the same listing
 	String temp;													  //c is intened for chessboard calibration images
 	vector<Mat> temp2;
@@ -148,7 +201,6 @@ void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to 
 	*image_set = temp2;
 	return;
 }
-
 void loadImageSet(vector<Mat> *image_set, int Length) { 
 	String temp;
 	vector<Mat> temp2;
