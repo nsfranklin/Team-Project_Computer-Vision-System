@@ -20,13 +20,17 @@ void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
 void objToMySQL(vector<Mat> *image_set);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
+void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID);
 
 int main()
 {
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
-	loadImageSet(&image_array, 40);
-	insertImages(&image_array, 8 , 40);
+	//loadImageSet(&image_array, 40);
+	//insertImages(&image_array, 8 , 40);
+	
+	loadImageSetFromDatabase(&image_array, '\0' , 8);
+	
 	std::cout << "Images Inserted" << std::endl;
 	//objToMySQL(&image_array);
 	if (image_array.empty())
@@ -39,15 +43,15 @@ int main()
 	featureMatching(image_array, &KeyPoints);
 	std::cout << "Keypoint Detection complete" << std::endl;
 
-	Mat sampleImage = image_array[0];								//sample to show keypoints
+	Mat sampleImage = image_array[2];								//sample to show keypoints
 	std::cout << "Sample Image Loaded" << std::endl;
 	Mat sampleWithKeyPoints;										//output image with rich keypoints
 	int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS; 
-	drawKeypoints(sampleImage, KeyPoints[0], sampleWithKeyPoints, Scalar::all(-1), flags);
+	drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
 	namedWindow("image", WINDOW_NORMAL);
 	imshow("image", sampleWithKeyPoints);
 
-	std::cout << "Keypoints detected in image 0.jgp:" << std::endl;
+	std::cout << "Keypoints detected in image" << std::endl;
 	std::cout << KeyPoints[0].size() << std::endl;
 
 	waitKey(0);
@@ -114,8 +118,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
-}
-
+}  
 void objToMySQL(vector<Mat> *image_set) {
 	try {
 		sql::Driver *driver;
@@ -156,7 +159,7 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
-		sql::Statement *stmt;
+		sql::PreparedStatement *stmt;
 		sql::ResultSet *res;
 
 		/* Create a connection */
@@ -169,14 +172,35 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
+		stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? AND ImageID < 4");
+		std::cout << "Prepared Statement" << std::endl;
 
+		stmt->setInt(1, ListingID);
 
-		stmt = con->createStatement();
-		stmt->executeQuery("SELECT  AS _message");  //selected images for a required mesh
+		std::cout << "Set ListingID" << std::endl;
 
+		res = stmt->executeQuery();  //selected images for a required mesh
 
+		Mat temp;
+		int flag = IMREAD_UNCHANGED;
+		
+		char * charbuf; 
+		vector<uchar> vecChar;
+		size_t blobSize = 100;
 
-		//delete res;
+		while (res->next()) {
+			std::istream *buf = res->getBlob("ImageBlob");
+			buf->seekg(0, std::ios::end);
+			blobSize = buf->tellg();
+			buf->seekg(0, std::ios::beg);
+			charbuf = new char[blobSize];
+			buf->read(charbuf, blobSize);
+			vecChar.assign(charbuf, charbuf + blobSize);
+			temp = imdecode(vecChar, flag);
+			image_set->push_back(temp);
+		}
+
+		delete res;
 		delete stmt;
 		delete con;
 	}
