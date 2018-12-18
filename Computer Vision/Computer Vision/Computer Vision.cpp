@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include<opencv2/opencv.hpp>
 #include<iostream>
-
+#include <algorithm>
 #include<mysqlx/xdevapi.h>
 
 #include <jdbc/mysql_connection.h>
@@ -18,23 +18,19 @@ using namespace ::mysqlx;
 void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
-void objToMySQL(vector<Mat> *image_set);
+void objToMySQL(String filename);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
-void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID);
+void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
+void determinePending(std::vector<int> vecPending, int *pendingID);
 
 int main()
 {
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
-	//loadImageSet(&image_array, 40);
-	//insertImages(&image_array, 8 , 40);
 	
-	loadImageSetFromDatabase(&image_array, '\0' , 8);
-	
-	std::cout << "Images Inserted" << std::endl;
-	//objToMySQL(&image_array);
+	loadImageSetFromDatabase(&image_array , 8);
 	if (image_array.empty())
-		std::cout << "Failed to load image set" << std::endl; //the start of error handeling
+		std::cout << "Failed to load image set" << std::endl; 
 	else
 		std::cout << "Image Set Loaded" << std::endl;
 
@@ -67,12 +63,53 @@ int main()
 	return 0;
 }
 
-void insertImages(vector<Mat> *image_set, int listingID, int length) {
+
+void determinePending(std::vector<int> vecPending, int *pendingID) {
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
 		sql::PreparedStatement *stmt;
 		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE Pending = 1");
+		res = stmt->executeQuery();
+
+		*pendingID = -1;
+		while (res->next()) {
+			if (std::find(vecPending.begin(), vecPending.end(), res->getInt(1)) != vecPending.end()) {
+				*pendingID << res->getInt(1);
+			}
+		}
+
+		delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+}//adds the listingID of currently pending listing that need there models to be generated
+
+void insertImages(vector<Mat> *image_set, int listingID, int length) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+
 
 		/* Create a connection */
 		driver = get_driver_instance();
@@ -119,12 +156,11 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }  
-void objToMySQL(vector<Mat> *image_set) {
+void objToMySQL(String filename) {
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
 		sql::Statement *stmt;
-		sql::ResultSet *res;
 
 		/* Create a connection */
 		driver = get_driver_instance();
@@ -140,7 +176,6 @@ void objToMySQL(vector<Mat> *image_set) {
 		stmt = con->createStatement();
 		stmt->executeQuery("SELECT * AS _message");
 
-		//delete res;
 		delete stmt;
 		delete con;
 		
@@ -155,7 +190,7 @@ void objToMySQL(vector<Mat> *image_set) {
 	}
 }
 
-void loadImageSetFromDatabase(vector<Mat> *image_set, char prefix, int ListingID) {
+void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -249,13 +284,19 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	int fastThreshold = 20; //default seems to be 20. It is the threshold in intinity different between the pixel at the center and the points round it.
 	Mat mask = Mat(); //option part of detect. strange its still a needed parameter
 	vector<vector<KeyPoint>> temp;
+	vector<Mat> vecDescriptors;
 
 	Ptr<ORB> orb = cv::ORB::create(nfeature, scaleFactor, edgeThreshold, firstLevel, WTA_K, scoreType, patchSize, fastThreshold);
 
-	std::cout << "Detector Constructed" << std::endl;
+	std::cout << "Constructing Detector" << std::endl;
 
-	orb->detect(image_set, temp, mask);
+	orb->detect(image_set, temp, mask); //detect is used as it can take a vector<Mat> rather than detectAndCompute
 	*keyPointVec = temp;
+	std::cout << "Detection Completed" << std::endl;
+
+	std::cout << "Computing Descriptors" << std::endl;
+	orb->compute(image_set, temp, vecDescriptors);
+	std::cout << "Descriptors Computed" << std::endl;
 
 }
 
