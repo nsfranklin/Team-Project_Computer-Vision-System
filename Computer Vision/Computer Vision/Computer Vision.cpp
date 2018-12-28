@@ -28,7 +28,7 @@ int main()
 	time_t start = time(NULL);
 	vector<Mat> image_array = {};
 	
-	loadImageSetFromDatabase(&image_array , 8);
+	loadImageSetFromDatabase(&image_array , 8); //Parameters: The image array to load them into, the Listing ID for the Image
 	if (image_array.empty())
 		std::cout << "Failed to load image set" << std::endl; 
 	else
@@ -87,7 +87,7 @@ void determinePending(std::vector<int> vecPending, int *pendingID) {
 		*pendingID = -1;
 		while (res->next()) {
 			if (std::find(vecPending.begin(), vecPending.end(), res->getInt(1)) != vecPending.end()) {
-				*pendingID << res->getInt(1);
+				*pendingID = res->getInt(1);
 			}
 		}
 
@@ -113,7 +113,6 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 
 		/* Create a connection */
 		driver = get_driver_instance();
-
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		/* Connect to the MySQL test database */
@@ -197,33 +196,30 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 		sql::PreparedStatement *stmt;
 		sql::ResultSet *res;
 
-		/* Create a connection */
-		driver = get_driver_instance();
 
+		driver = get_driver_instance();
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
-		stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? AND ImageID < 4");
+		stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? AND ImageID < 6");  //Used to restrict the number of images loaded for testing
 		std::cout << "Prepared Statement" << std::endl;
-
 		stmt->setInt(1, ListingID);
-
 		std::cout << "Set ListingID" << std::endl;
-
+		std::cout << "Executing Query (May be slow)" << std::endl;
 		res = stmt->executeQuery();  //selected images for a required mesh
-
 		Mat temp;
-		int flag = IMREAD_UNCHANGED;
-		
+		int flag = IMREAD_UNCHANGED; //Decode Blob Flag
+
 		char * charbuf; 
 		vector<uchar> vecChar;
 		size_t blobSize = 100;
+		int count = 0;
 
 		while (res->next()) {
+			std::cout << "Image Loaded: " << count << std::endl;
 			std::istream *buf = res->getBlob("ImageBlob");
 			buf->seekg(0, std::ios::end);
 			blobSize = buf->tellg();
@@ -233,6 +229,7 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 			vecChar.assign(charbuf, charbuf + blobSize);
 			temp = imdecode(vecChar, flag);
 			image_set->push_back(temp);
+			count = count + 1;
 		}
 
 		delete res;
@@ -278,6 +275,7 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	float scaleFactor = 1.2f; //Effectly this is a measure of precision
 	int edgeThreshold = 20; //Rather clear. How much of the edge should be ignored for feature detection
 	int firstLevel = 0; //Don't really understand this at the moment. Seems to be useful in optimising.
+	int nlevels = 8;
 	int WTA_K = 2 ; //  ''
 	int scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
 	int patchSize = 31; //This size of patches by BRIEF when descripting and matching keypoints found by FAST
@@ -285,22 +283,45 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	Mat mask = Mat(); //option part of detect. strange its still a needed parameter
 	vector<vector<KeyPoint>> temp;
 	vector<Mat> vecDescriptors;
+	Mat DescriptorTemp;
 
-	Ptr<ORB> orb = cv::ORB::create(nfeature, scaleFactor, edgeThreshold, firstLevel, WTA_K, scoreType, patchSize, fastThreshold);
+	Ptr<ORB> orb = cv::ORB::create(nfeature, scaleFactor, nlevels , edgeThreshold, firstLevel, WTA_K, scoreType, patchSize, fastThreshold);
 
-	std::cout << "Constructing Detector" << std::endl;
+	std::cout << "Constructing Detector. Detecting Keypoints" << std::endl;
 
 	orb->detect(image_set, temp, mask); //detect is used as it can take a vector<Mat> rather than detectAndCompute
 	*keyPointVec = temp;
 	std::cout << "Detection Completed" << std::endl;
 
+
+
 	std::cout << "Computing Descriptors" << std::endl;
 	orb->compute(image_set, temp, vecDescriptors);
 	std::cout << "Descriptors Computed" << std::endl;
 
+	FlannBasedMatcher matcher;
+
+	std::vector<vector<DMatch>> vecGoodMatches;
+	std::vector<DMatch> GoodMatch;
+		
+	int j = 0;
+	for (int i = 0 ; i < vecDescriptors.size() ; i++) {
+		for (j = i ; j < vecDescriptors.size() ; j++) { //further Optimisation! 
+				if (i != j) {  //Matching identical descriptors is pointless.
+					std::cout << "finding matches:" << i << "," << j << std::endl;
+					if (vecDescriptors[i].type() != CV_32F) {
+						vecDescriptors[i].convertTo(vecDescriptors[i], CV_32F);
+					}
+					if (vecDescriptors[j].type() != CV_32F) {
+						vecDescriptors[j].convertTo(vecDescriptors[j], CV_32F);
+					}
+					matcher.match(vecDescriptors[i], vecDescriptors[j], GoodMatch);
+
+				}
+			}
+		}
+
 }
-
-
 /*  Work in Progress
 
 bool cameraCalibration(Mat image_set[]) {
