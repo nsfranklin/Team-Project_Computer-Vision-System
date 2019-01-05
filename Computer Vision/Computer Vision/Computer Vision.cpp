@@ -3,13 +3,14 @@
 #include<iostream>
 #include <algorithm>
 #include<mysqlx/xdevapi.h>
-
 #include <jdbc/mysql_connection.h>
 #include <jdbc/cppconn/driver.h>
 #include <jdbc/cppconn/exception.h>
 #include <jdbc/cppconn/resultset.h>
 #include <jdbc/cppconn/statement.h>
 #include <jdbc/cppconn/prepared_statement.h>
+#include <chrono>
+#include <thread>
 
 using namespace std;
 using namespace cv;
@@ -21,50 +22,62 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 void objToMySQL(String filename);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
-void determinePending(std::vector<int> vecPending, int *pendingID);
+bool determinePending(std::vector<int> vecPending);
+bool MeshXYZToOBJ(int ListingID);
 
 int main()
 {
-	time_t start = time(NULL);
+	vector<int> vecPending;
 	vector<Mat> image_array = {};
-	
-	loadImageSetFromDatabase(&image_array , 8); //Parameters: The image array to load them into, the Listing ID for the Image
-	if (image_array.empty())
-		std::cout << "Failed to load image set" << std::endl; 
-	else
-		std::cout << "Image Set Loaded" << std::endl;
-
-	vector<vector<KeyPoint>> KeyPoints;   
-
-	featureMatching(image_array, &KeyPoints);
-	std::cout << "Keypoint Detection complete" << std::endl;
-
-	Mat sampleImage = image_array[2];								//sample to show keypoints
-	std::cout << "Sample Image Loaded" << std::endl;
-	Mat sampleWithKeyPoints;										//output image with rich keypoints
-	int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS; 
-	drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
-	namedWindow("image", WINDOW_NORMAL);
-	imshow("image", sampleWithKeyPoints);
-
-	std::cout << "Keypoints detected in image" << std::endl;
-	std::cout << KeyPoints[0].size() << std::endl;
-
-	waitKey(0);
+	vector<vector<KeyPoint>> KeyPoints;
 
 
-	//cameraCalibration();
-	// undistortPoints();
-	// triangulatePoints();
+	while(true) {
 
+		if (determinePending(vecPending)) {
+		
+			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
 
-	//printf("time elapsed: %d\n", (time(NULL) - start));
+			if (image_array.empty())
+				std::cout << "Failed to load image set" << std::endl;
+			else
+				std::cout << "Image Set Loaded" << std::endl;
+
+			featureMatching(image_array, &KeyPoints);
+			std::cout << "Keypoint Detection complete" << std::endl;
+
+			//cameraCalibration();
+			// undistortPoints();
+			// triangulatePoints();
+
+			Mat sampleImage = image_array[2];								//sample to show keypoints
+			std::cout << "Sample Image Loaded" << std::endl;
+			Mat sampleWithKeyPoints;										//output image with rich keypoints
+			int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
+			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
+			namedWindow("image", WINDOW_NORMAL);
+			imshow("image", sampleWithKeyPoints);
+
+			std::cout << "Keypoints detected in image" << std::endl;
+			std::cout << KeyPoints[0].size() << std::endl;
+
+			waitKey(0);
+
+			vecPending.erase(vecPending.begin());
+		}
+		else {
+			std::this_thread::sleep_for(std::chrono::milliseconds(5000)); //sleeps for 5 seconds then checks again.
+		}
+
+		break; //TEMP BREAKCLAUSE FOR TESTING
+	}
 
 	return 0;
 }
 
 
-void determinePending(std::vector<int> vecPending, int *pendingID) {
+bool determinePending(std::vector<int> vecPending) {
+	int pendingID;
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -84,10 +97,13 @@ void determinePending(std::vector<int> vecPending, int *pendingID) {
 		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE Pending = 1");
 		res = stmt->executeQuery();
 
-		*pendingID = -1;
+		int count = 0;
 		while (res->next()) {
 			if (std::find(vecPending.begin(), vecPending.end(), res->getInt(1)) != vecPending.end()) {
-				*pendingID = res->getInt(1);
+				pendingID = res->getInt(1);
+				if (vecPending.empty() || (pendingID > vecPending.back())) {
+					vecPending.push_back(pendingID);
+				}
 			}
 		}
 
@@ -102,6 +118,13 @@ void determinePending(std::vector<int> vecPending, int *pendingID) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
+
+	if (vecPending.empty()) {
+		return false;
+	}
+
+	return true;
+
 }//adds the listingID of currently pending listing that need there models to be generated
 
 void insertImages(vector<Mat> *image_set, int listingID, int length) {
@@ -244,7 +267,6 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to disingue image sets. relation to the same listing
 	String temp;													  //c is intened for chessboard calibration images
 	vector<Mat> temp2;
@@ -269,7 +291,6 @@ void loadImageSet(vector<Mat> *image_set, int Length) {
 	*image_set = temp2;
 	return;
 }
-
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec) {
 	int nfeature = 500; //max number of feature to keep
 	float scaleFactor = 1.2f; //Effectly this is a measure of precision
@@ -307,43 +328,74 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	int j = 0;
 	for (int i = 0 ; i < vecDescriptors.size() ; i++) {
 		for (j = i ; j < vecDescriptors.size() ; j++) { //further Optimisation! 
-				if (i != j) {  //Matching identical descriptors is pointless.
-					std::cout << "finding matches:" << i << "," << j << std::endl;
-					if (vecDescriptors[i].type() != CV_32F) {
-						vecDescriptors[i].convertTo(vecDescriptors[i], CV_32F);
-					}
-					if (vecDescriptors[j].type() != CV_32F) {
-						vecDescriptors[j].convertTo(vecDescriptors[j], CV_32F);
-					}
-					matcher.match(vecDescriptors[i], vecDescriptors[j], GoodMatch);
-
+			if (i != j) {  //Matching identical descriptors is pointless.
+				std::cout << "finding matches:" << i << "," << j << std::endl;
+				if (vecDescriptors[i].type() != CV_32F) {
+					vecDescriptors[i].convertTo(vecDescriptors[i], CV_32F);
 				}
+				if (vecDescriptors[j].type() != CV_32F) {
+					vecDescriptors[j].convertTo(vecDescriptors[j], CV_32F);
+				}
+				matcher.match(vecDescriptors[i], vecDescriptors[j], GoodMatch);
+				vecGoodMatches.push_back(GoodMatch);
 			}
 		}
+	}
 
+	Mat imageMatches;
+
+	drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , 2);
+
+	namedWindow("Some OK Matches", WINDOW_NORMAL);
+
+
+	imshow("Some OK Matches", imageMatches);
 }
-/*  Work in Progress
+
+bool MeshXYZToOBJ(int ListingID) {
+	std::string cmdFrag1 = "cd C:\\Program Files\\VCG\\MeshLab && meshlabserver -i c:\\MeshingFolder\\";
+	std::string cmdFrag3 = ".xyz -o c:\\MeshingFolder\\";
+	std::string cmdFrag5 = ".obj -s c:\\MeshingFolder\\MeshingScript.mlx";
+
+	int code;
+	std::string listingIDString = to_string(ListingID);
+
+
+	std::string cmdString = cmdFrag1 + listingIDString + cmdFrag3 + listingIDString + cmdFrag5;
+	
+
+
+	const char* cmdCString = cmdString.c_str();
+	std::cout << "Meshing " << ListingID << ".xyz" << std::endl;
+	code = system(cmdCString);
+
+	printf("Mesh Lab Exit Code: %d.\n", code);
+	cin.ignore();
+}
 
 bool cameraCalibration(Mat image_set[]) {
 	
-bool methodSuccess;
-Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
-Size chessboardSize = cv::Size(7, 9);
-vector<vector<Point2f>> cornersMatrix;
-vector<Point2f> cornersTemp;
-TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON)
-int count = 0;
+	bool methodSuccess;
+	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
+	Size chessboardSize = cv::Size(7, 9);
+	vector<vector<Point2f>> cornersMatrix;
+	vector<Point2f> cornersTemp;
+	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
+	int count = 0;
 
-for (;;){
-	methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+	for (;;){
+		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
 
-	count = count + 1;
-}	
+		count = count + 1;
+	}	
 
-	calculateCameraMatrix();
+		
 
-	calibrateCamera(cornersMatrix,,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec,stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flags=0, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-	return false;
+		calculateCameraMatrix();
+		
+		calibrateCamera(cornersMatrix,,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flags=0, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+		
+		return false;
 }
 
 void calculateCameraMatrix() {
@@ -361,5 +413,3 @@ void generateSparcePointCloud() {
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
 
 }
-
-*/
