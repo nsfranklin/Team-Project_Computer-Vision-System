@@ -24,6 +24,8 @@ void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
 bool determinePending(std::vector<int> vecPending);
 bool MeshXYZToOBJ(int ListingID);
+void calculateCameraMatrix();
+void generateSparcePointCloud();
 
 int main()
 {
@@ -66,10 +68,12 @@ int main()
 			vecPending.erase(vecPending.begin());
 		}
 		else {
+			std::cout << "Sleeping Nothing Pending" << std::endl;
+
 			std::this_thread::sleep_for(std::chrono::milliseconds(5000)); //sleeps for 5 seconds then checks again.
 		}
 
-		break; //TEMP BREAKCLAUSE FOR TESTING
+		//break; //TEMP BREAKCLAUSE FOR TESTING
 	}
 
 	return 0;
@@ -371,6 +375,13 @@ bool MeshXYZToOBJ(int ListingID) {
 
 	printf("Mesh Lab Exit Code: %d.\n", code);
 	cin.ignore();
+	if (code == 0) {
+		return true;
+	}
+	else {
+		return false;
+	}
+
 }
 
 bool cameraCalibration(Mat image_set[]) {
@@ -389,25 +400,37 @@ bool cameraCalibration(Mat image_set[]) {
 		count = count + 1;
 	}	
 
-		
+	InputArrayOfArrays imagePoints = {};
+	InputOutputArray cameraMatrix = {};
+	InputOutputArray distCoeffs = {};
+	OutputArrayOfArrays rvec = {};
+	OutputArrayOfArrays tvec = {};
+	int flag = 0;
+	OutputArray stdDevIntrinsics = {};
+	OutputArray stdDevExtrinsics = {};
+	OutputArray perViewErrors = {};
+
 
 		calculateCameraMatrix();
 		
-		calibrateCamera(cornersMatrix,,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flags=0, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+
+
+		calibrateCamera(cornersMatrix, imagePoints,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flag, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
 		
 		return false;
 }
 
 void calculateCameraMatrix() {
 
-
-
 }
-
-void create
 
 void generateSparcePointCloud() {
 
+	InputArray cam1ProjectionMatrix = {};
+	InputArray cam2ProjectionMatrix = {};
+	InputArray cam1Points = {};
+	InputArray cam2Points = {};
+	OutputArray Output = {}; //outputs and array of 4D points
 
 
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
