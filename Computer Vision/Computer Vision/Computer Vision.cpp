@@ -22,17 +22,17 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 void objToMySQL(String filename);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
-bool determinePending(std::vector<int> vecPending);
+bool determinePending(std::vector<int> &vecPending);
 bool MeshXYZToOBJ(int ListingID);
 void calculateCameraMatrix();
 void generateSparcePointCloud();
+void setStateAvailable(int ListingID);
 
 int main()
 {
 	vector<int> vecPending;
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
-
 
 	while(true) {
 
@@ -63,9 +63,9 @@ int main()
 			std::cout << "Keypoints detected in image" << std::endl;
 			std::cout << KeyPoints[0].size() << std::endl;
 
-			waitKey(0);
-
+			setStateAvailable(vecPending[0]);
 			vecPending.erase(vecPending.begin());
+
 		}
 		else {
 			std::cout << "Sleeping Nothing Pending" << std::endl;
@@ -79,8 +79,11 @@ int main()
 	return 0;
 }
 
+void setStateAvailable(int listingID) {
 
-bool determinePending(std::vector<int> vecPending) {
+}
+
+bool determinePending(std::vector<int> &vecPending) {
 	int pendingID;
 	try {
 		sql::Driver *driver;
@@ -98,16 +101,21 @@ bool determinePending(std::vector<int> vecPending) {
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
-		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE Pending = 1");
+		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending'");
 		res = stmt->executeQuery();
 
 		int count = 0;
 		while (res->next()) {
-			if (std::find(vecPending.begin(), vecPending.end(), res->getInt(1)) != vecPending.end()) {
-				pendingID = res->getInt(1);
-				if (vecPending.empty() || (pendingID > vecPending.back())) {
-					vecPending.push_back(pendingID);
-				}
+			std::cout << "Listing: " << res->getInt(1) << " pending." << std::endl;
+			std::cout << "enters res loop" << std::endl;
+			pendingID = res->getInt(1);
+
+			if (vecPending.empty()) {
+				vecPending.push_back(pendingID);
+				std::cout << res->getInt(1) << std::endl;
+			}
+			else if (pendingID > vecPending.back()) {
+				vecPending.push_back(pendingID);
 			}
 		}
 
