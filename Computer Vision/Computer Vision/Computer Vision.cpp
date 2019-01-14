@@ -27,6 +27,7 @@ bool MeshXYZToOBJ(int ListingID);
 void calculateCameraMatrix();
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
+bool checkCamera(int ListingID);
 
 int main()
 {
@@ -36,7 +37,7 @@ int main()
 
 	while(true) {
 
-		if (determinePending(vecPending)) {
+		if (determinePending(vecPending) && checkCamera(vecPending[0])) {
 		
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
 
@@ -48,7 +49,8 @@ int main()
 			featureMatching(image_array, &KeyPoints);
 			std::cout << "Keypoint Detection complete" << std::endl;
 
-			//cameraCalibration();
+			cameraCalibration(); //para if camera is present
+			
 			// undistortPoints();
 			// triangulatePoints();
 
@@ -80,6 +82,10 @@ int main()
 }
 
 void setStateAvailable(int listingID) {
+
+}
+
+bool checkCamera(int ListingID) { //Check if there is camera information in the DB for the users listing.
 
 }
 
@@ -138,7 +144,6 @@ bool determinePending(std::vector<int> &vecPending) {
 	return true;
 
 }//adds the listingID of currently pending listing that need there models to be generated
-
 void insertImages(vector<Mat> *image_set, int listingID, int length) {
 	try {
 		sql::Driver *driver;
@@ -392,7 +397,7 @@ bool MeshXYZToOBJ(int ListingID) {
 
 }
 
-bool cameraCalibration(Mat image_set[]) {
+bool cameraCalibration(Mat image_set[], float cameraMatrixVec) {
 	
 	bool methodSuccess;
 	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
@@ -410,13 +415,13 @@ bool cameraCalibration(Mat image_set[]) {
 
 	InputArrayOfArrays imagePoints = {};
 	InputOutputArray cameraMatrix = {};
-	InputOutputArray distCoeffs = {};
-	OutputArrayOfArrays rvec = {};
-	OutputArrayOfArrays tvec = {};
+	InputOutputArray distCoeffs = {}; //documentation notes this as an output only
+	OutputArrayOfArrays rvec = {};  //Output
+	OutputArrayOfArrays tvec = {}; //Output
 	int flag = 0;
-	OutputArray stdDevIntrinsics = {};
-	OutputArray stdDevExtrinsics = {};
-	OutputArray perViewErrors = {};
+	OutputArray stdDevIntrinsics = {}; //Output
+	OutputArray stdDevExtrinsics = {}; //Output
+	OutputArray perViewErrors = {}; //Output
 
 
 		calculateCameraMatrix();
