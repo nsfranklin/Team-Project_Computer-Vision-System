@@ -28,6 +28,7 @@ void calculateCameraMatrix();
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCamera(int ListingID);
+bool cameraCalibration(Mat image_set[], int focusLength);
 
 int main()
 {
@@ -397,7 +398,7 @@ bool MeshXYZToOBJ(int ListingID) {
 
 }
 
-bool cameraCalibration(Mat image_set[], float cameraMatrixVec) {
+bool cameraCalibration(Mat image_set[], float focusLength, float sensorWidth, float sensorHeight) {
 	
 	bool methodSuccess;
 	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
