@@ -1,16 +1,16 @@
 #include "stdafx.h"
-#include<opencv2/opencv.hpp>
-#include<iostream>
+#include <opencv2/opencv.hpp>
+#include <iostream>
 #include <algorithm>
-#include<mysqlx/xdevapi.h>
+#include <mysqlx/xdevapi.h>
 #include <jdbc/mysql_connection.h>
 #include <jdbc/cppconn/driver.h>
 #include <jdbc/cppconn/exception.h>
 #include <jdbc/cppconn/resultset.h>
 #include <jdbc/cppconn/statement.h>
 #include <jdbc/cppconn/prepared_statement.h>
-#include <chrono>
 #include <thread>
+#include <time.h>
 
 using namespace std;
 using namespace cv;
@@ -28,19 +28,24 @@ void calculateCameraMatrix();
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCamera(int ListingID);
-bool cameraCalibration(Mat image_set[], int focusLength);
+bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth); //the lenght and width are in mm
 
 int main()
 {
 	vector<int> vecPending;
 	vector<Mat> image_array = {};
+	vector<Mat> calibrationSet = {};
 	vector<vector<KeyPoint>> KeyPoints;
+	float focusLength = 4.4f; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
+	float sensorWidth = 6.17f; //also the value of my mobile phone.
 
 	while(true) {
 
 		if (determinePending(vecPending) && checkCamera(vecPending[0])) {
 		
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
+			loadImageSet(&calibrationSet, 10 ,'c');
+
 
 			if (image_array.empty())
 				std::cout << "Failed to load image set" << std::endl;
@@ -50,7 +55,7 @@ int main()
 			featureMatching(image_array, &KeyPoints);
 			std::cout << "Keypoint Detection complete" << std::endl;
 
-			cameraCalibration(); //para if camera is present
+			cameraCalibration(calibrationSet , focusLength, sensorWidth); //para if camera is present
 			
 			// undistortPoints();
 			// triangulatePoints();
@@ -87,7 +92,7 @@ void setStateAvailable(int listingID) {
 }
 
 bool checkCamera(int ListingID) { //Check if there is camera information in the DB for the users listing.
-
+	return true;
 }
 
 bool determinePending(std::vector<int> &vecPending) {
@@ -398,8 +403,12 @@ bool MeshXYZToOBJ(int ListingID) {
 
 }
 
-bool cameraCalibration(Mat image_set[], float focusLength, float sensorWidth, float sensorHeight) {
-	
+bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth) {
+	timespec start;
+	timespec end;
+
+	std::cout << "starting calibration" << std::endl;
+
 	bool methodSuccess;
 	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
 	Size chessboardSize = cv::Size(7, 9);
@@ -408,11 +417,23 @@ bool cameraCalibration(Mat image_set[], float focusLength, float sensorWidth, fl
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
 	int count = 0;
 
-	for (;;){
+	for (int i = 0 ; i < 10 ; i++){
+		std::cout << "Finding Chessboard: " << i << std::endl;
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
 		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
 
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
 		count = count + 1;
+
+
 	}	
+	drawChessboardCorners(image_set[9], chessboardSize, cornersMatrix[9], methodSuccess);
+
+
+
+	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
 
 	InputArrayOfArrays imagePoints = {};
 	InputOutputArray cameraMatrix = {};
@@ -425,13 +446,11 @@ bool cameraCalibration(Mat image_set[], float focusLength, float sensorWidth, fl
 	OutputArray perViewErrors = {}; //Output
 
 
-		calculateCameraMatrix();
+	//calculateCameraMatrix();
 		
-
-
-		calibrateCamera(cornersMatrix, imagePoints,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flag, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+	//calibrateCamera(cornersMatrix, imagePoints,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flag, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
 		
-		return false;
+	return false;
 }
 
 void calculateCameraMatrix() {
@@ -450,3 +469,4 @@ void generateSparcePointCloud() {
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
 
 }
+
