@@ -44,8 +44,8 @@ int main()
 		if (determinePending(vecPending) && checkCamera(vecPending[0])) {
 		
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
+			
 			loadImageSet(&calibrationSet, 10 ,'c');
-
 
 			if (image_array.empty())
 				std::cout << "Failed to load image set" << std::endl;
@@ -55,18 +55,18 @@ int main()
 			featureMatching(image_array, &KeyPoints);
 			std::cout << "Keypoint Detection complete" << std::endl;
 
-			cameraCalibration(calibrationSet , focusLength, sensorWidth); //para if camera is present
-			
-			// undistortPoints();
-			// triangulatePoints();
-
 			Mat sampleImage = image_array[2];								//sample to show keypoints
-			std::cout << "Sample Image Loaded" << std::endl;
+
 			Mat sampleWithKeyPoints;										//output image with rich keypoints
 			int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
 			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
+
+			cameraCalibration(calibrationSet, focusLength, sensorWidth); //para if camera is present
+
+			// undistortPoints();
+			// triangulatePoints();
 
 			std::cout << "Keypoints detected in image" << std::endl;
 			std::cout << KeyPoints[0].size() << std::endl;
@@ -81,8 +81,10 @@ int main()
 			std::this_thread::sleep_for(std::chrono::milliseconds(5000)); //sleeps for 5 seconds then checks again.
 		}
 
-		//break; //TEMP BREAKCLAUSE FOR TESTING
+		break; //TEMP BREAKCLAUSE FOR TESTING
 	}
+
+	cv::waitKey(0);
 
 	return 0;
 }
@@ -119,7 +121,6 @@ bool determinePending(std::vector<int> &vecPending) {
 		int count = 0;
 		while (res->next()) {
 			std::cout << "Listing: " << res->getInt(1) << " pending." << std::endl;
-			std::cout << "enters res loop" << std::endl;
 			pendingID = res->getInt(1);
 
 			if (vecPending.empty()) {
@@ -294,9 +295,11 @@ void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to 
 	String temp;													  //c is intened for chessboard calibration images
 	vector<Mat> temp2;
 	
-	for (int i = 0; i < Length; i++) {
+	for (int i = 1 ; i < Length; i++) {
 		temp = prefix + to_string(i) + ".jpg";
 		temp2.push_back(imread(temp));
+		std::cout << "Image Loaded: " << prefix << i << std::endl;
+
 	}
 
 	*image_set = temp2;
@@ -308,8 +311,9 @@ void loadImageSet(vector<Mat> *image_set, int Length) {
 
 	for (int i = 0; i < Length; i++) {
 		temp = to_string(i) + ".jpg";
-		std::cout << temp << std::endl;
 		temp2.push_back(imread(temp));
+		std::cout << "Image Loaded: " << i << std::endl;
+
 	}
 	*image_set = temp2;
 	return;
@@ -370,8 +374,7 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , 2);
 
 	namedWindow("Some OK Matches", WINDOW_NORMAL);
-
-
+	
 	imshow("Some OK Matches", imageMatches);
 }
 
@@ -404,8 +407,6 @@ bool MeshXYZToOBJ(int ListingID) {
 }
 
 bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth) {
-	timespec start;
-	timespec end;
 
 	std::cout << "starting calibration" << std::endl;
 
@@ -417,21 +418,31 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
 	int count = 0;
 
-	for (int i = 0 ; i < 10 ; i++){
+	for (int i = 0 ; i < 9 ; i++){
 		std::cout << "Finding Chessboard: " << i << std::endl;
-		clock_gettime(CLOCK_MONOTONIC, &start);
+		//clock_gettime(CLOCK_MONOTONIC, &start);
 
 		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+		cornersMatrix.push_back(cornersTemp);
+		if (methodSuccess) {
+			std::cout << "Chessboard Detected" << std::endl;
+		}
+		else
+		{
+			std::cout << "Chessboard Not Detected " << std::endl;
+			cornersMatrix.push_back({});
+		}
 
-		clock_gettime(CLOCK_MONOTONIC, &end);
+		//clock_gettime(CLOCK_MONOTONIC, &end);
 
 		count = count + 1;
 
 
 	}	
-	drawChessboardCorners(image_set[9], chessboardSize, cornersMatrix[9], methodSuccess);
 
-
+	drawChessboardCorners(image_set[8], chessboardSize, cornersMatrix[8], true);
+	namedWindow("Chessboard", WINDOW_NORMAL);
+	imshow("Chessboard", image_set[8]);
 
 	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
 
