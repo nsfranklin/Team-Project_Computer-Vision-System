@@ -295,7 +295,7 @@ void loadImageSet(vector<Mat> *image_set, int Length, char prefix) {  //used to 
 	String temp;													  //c is intened for chessboard calibration images
 	vector<Mat> temp2;
 	
-	for (int i = 1 ; i < Length; i++) {
+	for (int i = 0 ; i < Length; i++) {
 		temp = prefix + to_string(i) + ".jpg";
 		temp2.push_back(imread(temp));
 		std::cout << "Image Loaded: " << prefix << i << std::endl;
@@ -418,9 +418,8 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
 	int count = 0;
 
-	for (int i = 0 ; i < 9 ; i++){
+	for (int i = 0 ; i < 10 ; i++){
 		std::cout << "Finding Chessboard: " << i << std::endl;
-		//clock_gettime(CLOCK_MONOTONIC, &start);
 
 		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
 		cornersMatrix.push_back(cornersTemp);
@@ -433,10 +432,7 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 			cornersMatrix.push_back({});
 		}
 
-		//clock_gettime(CLOCK_MONOTONIC, &end);
-
 		count = count + 1;
-
 
 	}	
 
