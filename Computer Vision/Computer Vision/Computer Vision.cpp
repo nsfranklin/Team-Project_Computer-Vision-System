@@ -24,7 +24,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
 bool determinePending(std::vector<int> &vecPending);
 bool MeshXYZToOBJ(int ListingID);
-void calculateCameraMatrix();
+void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType);
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCamera(int ListingID);
@@ -413,6 +413,7 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 	bool methodSuccess;
 	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
 	Size chessboardSize = cv::Size(7, 9);
+	int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
 	vector<vector<Point2f>> cornersMatrix;
 	vector<Point2f> cornersTemp;
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
@@ -436,32 +437,54 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 
 	}	
 
-	drawChessboardCorners(image_set[8], chessboardSize, cornersMatrix[8], true);
-	namedWindow("Chessboard", WINDOW_NORMAL);
-	imshow("Chessboard", image_set[8]);
+	//drawChessboardCorners(image_set[8], chessboardSize, cornersMatrix[8], true);
+	//namedWindow("Chessboard", WINDOW_NORMAL);
+	//imshow("Chessboard", image_set[8]);
 
 	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
 
-	InputArrayOfArrays imagePoints = {};
-	InputOutputArray cameraMatrix = {};
-	InputOutputArray distCoeffs = {}; //documentation notes this as an output only
-	OutputArrayOfArrays rvec = {};  //Output
-	OutputArrayOfArrays tvec = {}; //Output
-	int flag = 0;
-	OutputArray stdDevIntrinsics = {}; //Output
-	OutputArray stdDevExtrinsics = {}; //Output
-	OutputArray perViewErrors = {}; //Output
+	vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+	calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+	worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+	worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
 
+	Mat cameraMatrix;
+	Mat distCoeffs = Mat::zeros(8,1, CV_64F); //documentation notes this as an output only
+	vector<Mat>  rvec , tvec;  //Output
+	int flag = 0;
+
+	//OutputArray stdDevIntrinsics = {}; //Output
+	//OutputArray stdDevExtrinsics = {}; //Output
+	//OutputArray perViewErrors = {}; //Output
 
 	//calculateCameraMatrix();
 		
-	//calibrateCamera(cornersMatrix, imagePoints,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, stdDevIntrinsics, stdDevExtrinsics, perViewErrors, flag, criteria); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+	calibrateCamera(worldSpacePoints, cornersMatrix ,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
 		
 	return false;
 }
 
-void calculateCameraMatrix() {
-
+void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType) { //modifided from template method provided at: https://docs.opencv.org/trunk/d4/d94/tutorial_camera_calibration.html
+	corners.clear();
+	switch (patternType)
+	{
+	case 1: //chessboard
+	case 2: //Circles_Grid
+		for (int i = 0; i < boardSize.height; ++i) {
+			for (int j = 0; j < boardSize.width; ++j) {
+				corners.push_back(Point3f(j*squareSize, i*squareSize, 0));
+				std::cout << "board corner position" << std::endl;
+			}
+		}
+		break;
+	case 3: //Asymmetric_Circles_Grid
+		for (int i = 0; i < boardSize.height; i++)
+			for (int j = 0; j < boardSize.width; j++)
+				corners.push_back(Point3f((2 * j + i % 2)*squareSize, i*squareSize, 0));
+		break;
+	default:
+		break;
+	}
 }
 
 void generateSparcePointCloud() {
