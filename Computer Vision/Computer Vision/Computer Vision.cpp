@@ -29,6 +29,8 @@ void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCamera(int ListingID);
 bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth); //the lenght and width are in mm
+void undistortPoints();
+bool triangulatePoints();
 
 int main()
 {
@@ -42,9 +44,7 @@ int main()
 	while(true) {
 
 		if (determinePending(vecPending) && checkCamera(vecPending[0])) {
-		
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
-			
 			loadImageSet(&calibrationSet, 10 ,'c');
 
 			if (image_array.empty())
@@ -64,9 +64,8 @@ int main()
 			imshow("image", sampleWithKeyPoints);
 
 			cameraCalibration(calibrationSet, focusLength, sensorWidth); //para if camera is present
-
-			// undistortPoints();
-			// triangulatePoints();
+			undistortPoints();
+			triangulatePoints();
 
 			std::cout << "Keypoints detected in image" << std::endl;
 			std::cout << KeyPoints[0].size() << std::endl;
@@ -92,11 +91,26 @@ int main()
 void setStateAvailable(int listingID) {
 
 }
-
-bool checkCamera(int ListingID) { //Check if there is camera information in the DB for the users listing.
+bool checkLocalCalibration() {//checks for local calibration files for a camera.
 	return true;
 }
 
+bool checkCameraParameters(int ListingID) { //checks for camera information in database
+	if () {
+		return true;
+	}
+	else {
+		return false;
+	}
+	
+	
+}
+bool triangulatePoints() {
+	return true;
+}
+void undistortPoints() {
+
+}
 bool determinePending(std::vector<int> &vecPending) {
 	int pendingID;
 	try {
