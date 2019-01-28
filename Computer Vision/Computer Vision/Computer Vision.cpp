@@ -11,6 +11,7 @@
 #include <jdbc/cppconn/prepared_statement.h>
 #include <thread>
 #include <time.h>
+#include <windows.h>
 
 using namespace std;
 using namespace cv;
@@ -27,10 +28,13 @@ bool MeshXYZToOBJ(int ListingID);
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType);
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
-bool checkCamera(int ListingID);
-bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth); //the lenght and width are in mm
+bool checkCameraParameters(int listingID);
+bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
 void undistortPoints();
 bool triangulatePoints();
+bool checkLocalCalibration(int cameraID);
+void loadLocalCalibration();
+int findCameraID(int listingID);
 
 int main()
 {
@@ -43,9 +47,10 @@ int main()
 
 	while(true) {
 
-		if (determinePending(vecPending) && checkCamera(vecPending[0])) {
+		if (determinePending(vecPending)) {
+
+			cameraCalibration(calibrationSet, focusLength, sensorWidth, vecPending[0]);//checks for local calibration. Then calibrates if not present.
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
-			loadImageSet(&calibrationSet, 10 ,'c');
 
 			if (image_array.empty())
 				std::cout << "Failed to load image set" << std::endl;
@@ -63,7 +68,6 @@ int main()
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
-			cameraCalibration(calibrationSet, focusLength, sensorWidth); //para if camera is present
 			undistortPoints();
 			triangulatePoints();
 
@@ -91,19 +95,34 @@ int main()
 void setStateAvailable(int listingID) {
 
 }
-bool checkLocalCalibration() {//checks for local calibration files for a camera.
-	return true;
+bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera.
+	std::string dirs = "camera_calibrations";
+	LPCWSTR dir = (LPCWSTR)dirs.c_str();
+	if (CreateDirectory(dir , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
+	{
+		return false; //If you need to make the dir then there is no saved data.
+	}
+	else
+	{
+		String filePath = "../camera_calibrations/" + to_string(cameraID) + ".txt";
+		ifstream inf(filePath);
+		if (!inf) {
+			return false;
+		}
+		else {
+			return true;
+		}
+	}
 }
 
-bool checkCameraParameters(int ListingID) { //checks for camera information in database
-	if () {
+bool checkCameraParameters(int listingID) { //checks for camera information in database
+	if (findCameraID(listingID) != -1){
 		return true;
 	}
-	else {
+	else 
+	{
 		return false;
 	}
-	
-	
 }
 bool triangulatePoints() {
 	return true;
@@ -111,7 +130,7 @@ bool triangulatePoints() {
 void undistortPoints() {
 
 }
-bool determinePending(std::vector<int> &vecPending) {
+bool determinePending(std::vector<int> &vecPending) { //returns list of pending listingID. Pending if the state is pending and the camer
 	int pendingID;
 	try {
 		sql::Driver *driver;
@@ -129,7 +148,7 @@ bool determinePending(std::vector<int> &vecPending) {
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
-		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending'");
+		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending' AND CameraID IS NOT NULL");
 		res = stmt->executeQuery();
 
 		int count = 0;
@@ -249,7 +268,6 @@ void objToMySQL(String filename) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 	try {
 		sql::Driver *driver;
@@ -391,7 +409,6 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	
 	imshow("Some OK Matches", imageMatches);
 }
-
 bool MeshXYZToOBJ(int ListingID) {
 	std::string cmdFrag1 = "cd C:\\Program Files\\VCG\\MeshLab && meshlabserver -i c:\\MeshingFolder\\";
 	std::string cmdFrag3 = ".xyz -o c:\\MeshingFolder\\";
@@ -419,8 +436,52 @@ bool MeshXYZToOBJ(int ListingID) {
 	}
 
 }
+int findCameraID(int listingID) {
+	int cameraID = -1;
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
 
-bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth) {
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+		stmt = con->prepareStatement("SELECT CameraID FROM Product WHERE ListingID = ? AND CameraID IS NOT NULL");
+		stmt->setInt(1, listingID);
+		res = stmt->executeQuery();
+
+		int count = 0;
+		while (res->next()) {
+			cameraID = res->getInt(1);
+			std::cout << "Listing " << listingID << " has Camera ID " << cameraID << std::endl;
+		}
+		delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+	if (cameraID == -1) {
+		return -1;
+	}
+	else {
+		return cameraID;
+	}
+}
+bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth, int listingID) {
 
 	std::cout << "starting calibration" << std::endl;
 
@@ -432,50 +493,57 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 	vector<Point2f> cornersTemp;
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
 	int count = 0;
+	int cameraID = findCameraID(listingID);
+	if (!checkLocalCalibration(cameraID)) {
 
-	for (int i = 0 ; i < 10 ; i++){
-		std::cout << "Finding Chessboard: " << i << std::endl;
+		for (int i = 0; i < 10; i++) {
+			std::cout << "Finding Chessboard: " << i << std::endl;
 
-		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
-		cornersMatrix.push_back(cornersTemp);
-		if (methodSuccess) {
-			std::cout << "Chessboard Detected" << std::endl;
+			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+			cornersMatrix.push_back(cornersTemp);
+			if (methodSuccess) {
+				std::cout << "Chessboard Detected" << std::endl;
+			}
+			else
+			{
+				std::cout << "Chessboard Not Detected " << std::endl;
+				cornersMatrix.push_back({});
+			}
+
+			count = count + 1;
+
 		}
-		else
-		{
-			std::cout << "Chessboard Not Detected " << std::endl;
-			cornersMatrix.push_back({});
-		}
 
-		count = count + 1;
 
-	}	
+		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
 
-	//drawChessboardCorners(image_set[8], chessboardSize, cornersMatrix[8], true);
-	//namedWindow("Chessboard", WINDOW_NORMAL);
-	//imshow("Chessboard", image_set[8]);
+		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
 
-	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
+		Mat cameraMatrix;
+		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
+		vector<Mat>  rvec, tvec;  //Output
+		int flag = 0;
 
-	vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
-	calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
-	worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
-	worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
+		//OutputArray stdDevIntrinsics = {}; //Output
+		//OutputArray stdDevExtrinsics = {}; //Output
+		//OutputArray perViewErrors = {}; //Output
 
-	Mat cameraMatrix;
-	Mat distCoeffs = Mat::zeros(8,1, CV_64F); //documentation notes this as an output only
-	vector<Mat>  rvec , tvec;  //Output
-	int flag = 0;
+		//calculateCameraMatrix();
 
-	//OutputArray stdDevIntrinsics = {}; //Output
-	//OutputArray stdDevExtrinsics = {}; //Output
-	//OutputArray perViewErrors = {}; //Output
+		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
 
-	//calculateCameraMatrix();
-		
-	calibrateCamera(worldSpacePoints, cornersMatrix ,imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-		
+	}
+	else {
+		loadLocalCalibration();
+	}
 	return false;
+}
+
+void loadLocalCalibration() {
+
 }
 
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType) { //modifided from template method provided at: https://docs.opencv.org/trunk/d4/d94/tutorial_camera_calibration.html
