@@ -30,7 +30,7 @@ void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
-void undistortPoints();
+void undistortAllPoints();
 bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration();
@@ -185,12 +185,6 @@ bool checkCameraParameters(int listingID) { //checks for camera information in d
 		return false;
 	}
 }
-bool triangulatePoints() {
-	return true;
-}
-void undistortPoints() {
-
-}
 bool determinePending(std::vector<int> &vecPending) { //returns list of pending listingID. Pending if the state is pending and the camer
 	int pendingID;
 	try {
@@ -292,39 +286,6 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 } //Inserts images into DB for testing  
-void objToMySQL(String filename){
-	try {
-		sql::Driver *driver;
-		sql::Connection *con;
-		sql::Statement *stmt;
-
-		/* Create a connection */
-		driver = get_driver_instance();
-
-		std::cout << "Attempting to Connect" << std::endl;
-		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
-		con->setSchema("cTeamTeamProjectDatabase");
-		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
-		}
-		
-		stmt = con->createStatement();
-		stmt->executeQuery("SELECT * AS _message");
-
-		delete stmt;
-		delete con;
-		
-
-	}
-	catch (sql::SQLException &e) {
-		cout << "# ERR: SQLException in " << __FILE__;
-		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
-		cout << "# ERR: " << e.what();
-		cout << " (MySQL error code: " << e.getErrorCode();
-		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
-	}
-}
 void loadImageSetFromDatabase(vector<Mat> *image_set, int tableID, bool isCalibration) {
 	try {
 		sql::Driver *driver;
@@ -471,6 +432,67 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	
 	imshow("Some OK Matches", imageMatches);
 }
+bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
+
+	std::cout << "starting calibration" << std::endl;
+	vector<Mat> image_set;
+	bool methodSuccess;
+	Size imageSetSize;                               //all the images need to be of a fixed resolution
+	Size chessboardSize = cv::Size(7, 9);
+	int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
+	vector<vector<Point2f>> cornersMatrix;
+	vector<Point2f> cornersTemp;
+	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
+	int count = 0;
+	int cameraID = findCameraID(listingID);
+	if (!checkLocalCalibration(cameraID)) {
+		loadImageSetFromDatabase(&image_set, cameraID, true);
+		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
+		for (int i = 0; i < 10; i++) {
+			std::cout << "Finding Chessboard: " << i << std::endl;
+			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+			cornersMatrix.push_back(cornersTemp);
+			if (methodSuccess) {
+				std::cout << "Chessboard Detected" << std::endl;
+			}
+			else
+			{
+				std::cout << "Chessboard Not Detected " << std::endl;
+				cornersMatrix.push_back({});
+			}
+			count = count + 1;
+		}
+		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
+		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+		std::cout << "Constructing World Space Points Array" << std::endl;
+		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
+
+		Mat cameraMatrix;
+		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
+		vector<Mat>  rvec, tvec;  //Output
+		int flag = 0;
+
+		//OutputArray stdDevIntrinsics = {}; //Output
+		//OutputArray stdDevExtrinsics = {}; //Output
+		//OutputArray perViewErrors = {}; //Output
+
+		//calculateCameraMatrix();
+
+		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+
+		ofstream calibrationFile;
+		std::string fileName = to_string(cameraID) + ".txt";
+		calibrationFile.open(fileName);
+
+
+	}
+	else {
+		loadLocalCalibration();
+	}
+	return false;
+}
 bool MeshXYZToOBJ(int ListingID) {
 	std::string cmdFrag1 = "cd C:\\Program Files\\VCG\\MeshLab && meshlabserver -i c:\\MeshingFolder\\";
 	std::string cmdFrag3 = ".xyz -o c:\\MeshingFolder\\";
@@ -543,69 +565,6 @@ int findCameraID(int listingID) {
 		return cameraID;
 	}
 }
-bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
-
-	std::cout << "starting calibration" << std::endl;
-	vector<Mat> image_set;
-	bool methodSuccess;
-	Size imageSetSize;                               //all the images need to be of a fixed resolution
-	Size chessboardSize = cv::Size(7, 9);
-	int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
-	vector<vector<Point2f>> cornersMatrix;
-	vector<Point2f> cornersTemp;
-	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
-	int count = 0;
-	int cameraID = findCameraID(listingID);
-	if (!checkLocalCalibration(cameraID)) {
-
-		loadImageSetFromDatabase(&image_set, cameraID, true);
-		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
-		for (int i = 0; i < 10; i++) {
-			std::cout << "Finding Chessboard: " << i << std::endl;
-
-			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
-			cornersMatrix.push_back(cornersTemp);
-			if (methodSuccess) {
-				std::cout << "Chessboard Detected" << std::endl;
-			}
-			else
-			{
-				std::cout << "Chessboard Not Detected " << std::endl;
-				cornersMatrix.push_back({});
-			}
-
-			count = count + 1;
-
-		}
-
-
-		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
-
-		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
-		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
-		std::cout << "Constructing World Space Points Array" << std::endl;
-		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
-		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
-
-		Mat cameraMatrix;
-		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
-		vector<Mat>  rvec, tvec;  //Output
-		int flag = 0;
-
-		//OutputArray stdDevIntrinsics = {}; //Output
-		//OutputArray stdDevExtrinsics = {}; //Output
-		//OutputArray perViewErrors = {}; //Output
-
-		//calculateCameraMatrix();
-
-		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-
-	}
-	else {
-		loadLocalCalibration();
-	}
-	return false;
-}
 void loadLocalCalibration() {
 
 }
@@ -632,6 +591,17 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 		break;
 	}
 }
+void undistortAllPoints() {
+
+	loadLocalCalibration();
+	for (int i = 0 ; i < .length(); i++) {
+		undistortPoints();
+	}
+
+}
+bool triangulatePoints() {
+	return true;
+}
 void generateSparcePointCloud() {
 
 	InputArray cam1ProjectionMatrix = {};
@@ -643,5 +613,38 @@ void generateSparcePointCloud() {
 
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
 
+}
+void objToMySQL(String filename) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::Statement *stmt;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+
+		stmt = con->createStatement();
+		stmt->executeQuery("SELECT * AS _message");
+
+		delete stmt;
+		delete con;
+
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
 }
 
