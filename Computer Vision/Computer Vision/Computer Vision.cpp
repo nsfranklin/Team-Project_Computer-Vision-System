@@ -22,7 +22,7 @@ void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
 void objToMySQL(String filename);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
-void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID);
+void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID, bool isCalibration);
 bool determinePending(std::vector<int> &vecPending);
 bool MeshXYZToOBJ(int ListingID);
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType);
@@ -35,6 +35,7 @@ bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration();
 int findCameraID(int listingID);
+void setStatePending(int listingID);
 
 int main()
 {
@@ -49,7 +50,7 @@ int main()
 		if (determinePending(vecPending)) {
 
 			cameraCalibration(focusLength, sensorWidth, vecPending[0]);//checks for local calibration. Then calibrates if not present.
-			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
+			loadImageSetFromDatabase(&image_array, vecPending[0], false); //Parameters: The image array to load them into, the Listing ID for the Image
 
 			if (image_array.empty())
 				std::cout << "Failed to load image set" << std::endl;
@@ -73,7 +74,7 @@ int main()
 			std::cout << "Keypoints detected in image" << std::endl;
 			std::cout << KeyPoints[0].size() << std::endl;
 
-			setStateAvailable(vecPending[0]);
+			//setStateAvailable(vecPending[0]);
 			vecPending.erase(vecPending.begin());
 
 		}
@@ -90,7 +91,6 @@ int main()
 
 	return 0;
 }
-
 void setStateAvailable(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -123,6 +123,40 @@ void setStateAvailable(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
+void setStatePending(int listingID) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+			std::cout << "Set Test Listing to pending" << std::endl;
+
+		stmt = con->prepareStatement("UPDATE Product SET State = 'pending' WHERE ListingID = ? AND State = 'available';");
+		stmt->setInt(1, listingID);
+		res = stmt->executeQuery();
+		delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+}
 bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera. creates dir if not present
 	std::string dirs = "camera_calibrations";
 	LPCWSTR dir = (LPCWSTR)dirs.c_str();
@@ -142,7 +176,6 @@ bool checkLocalCalibration(int cameraID) {//checks for local calibration files f
 		}
 	}
 }
-
 bool checkCameraParameters(int listingID) { //checks for camera information in database
 	if (findCameraID(listingID) != -1){
 		return true;
@@ -215,8 +248,6 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		sql::Driver *driver;
 		sql::Connection *con;
 		sql::PreparedStatement *stmt;
-
-
 		/* Create a connection */
 		driver = get_driver_instance();
 		std::cout << "Attempting to Connect" << std::endl;
@@ -228,7 +259,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		}
 
 		vector<uchar> buf = {};
-		stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, ListingID) VALUES(? , ? , ? )");
+		stmt = con->prepareStatement("INSERT INTO CaliImage(ImageID, ImageBlob, CameraID) VALUES(? , ? , ? )");
 
 		if (image_set->empty()) {
 			std::cout << "IMAGE SET NULL!" << std::endl;
@@ -242,7 +273,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 				bufstr += letter;
 			std::cout << "streamed" << std::endl;
 			std::istringstream str(bufstr);
-			stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, ListingID) VALUES(? , ? , ? )");
+			stmt = con->prepareStatement("INSERT INTO CaliImage(ImageID, ImageBlob, CameraID) VALUES(? , ? , ? )");
 			stmt->setInt(1, i);
 			stmt->setBlob(2, &str);
 			stmt->setInt(3, listingID);
@@ -260,8 +291,8 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
-}  
-void objToMySQL(String filename) {
+} //Inserts images into DB for testing  
+void objToMySQL(String filename){
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -294,13 +325,13 @@ void objToMySQL(String filename) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
+void loadImageSetFromDatabase(vector<Mat> *image_set, int tableID, bool isCalibration) {
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
 		sql::PreparedStatement *stmt;
 		sql::ResultSet *res;
-
+		std::string table , column;
 
 		driver = get_driver_instance();
 		std::cout << "Attempting to Connect" << std::endl;
@@ -309,12 +340,17 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID) {
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
-		stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? AND ImageID < 6");  //Used to restrict the number of images loaded for testing
+		if (isCalibration) {
+			stmt = con->prepareStatement("SELECT ImageBlob FROM CaliImage WHERE CameraID = ?");
+		}
+		else {
+			stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? and ImageID < 6");
+		}
 		std::cout << "Prepared Statement" << std::endl;
-		stmt->setInt(1, ListingID);
+		stmt->setInt(1, tableID); //either a camera or listing ID
 		std::cout << "Set ListingID" << std::endl;
 		std::cout << "Executing Query (May be slow)" << std::endl;
-		res = stmt->executeQuery();  //selected images for a required mesh
+		res = stmt->executeQuery();  //Selected images for a required mesh
 		Mat temp;
 		int flag = IMREAD_UNCHANGED; //Decode Blob Flag
 
@@ -507,7 +543,7 @@ int findCameraID(int listingID) {
 		return cameraID;
 	}
 }
-bool cameraCalibration( float focusLength, float sensorWidth, int listingID) {
+bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 
 	std::cout << "starting calibration" << std::endl;
 	vector<Mat> image_set;
@@ -522,7 +558,7 @@ bool cameraCalibration( float focusLength, float sensorWidth, int listingID) {
 	int cameraID = findCameraID(listingID);
 	if (!checkLocalCalibration(cameraID)) {
 
-		loadImageSet(&image_set, 10, 'c');
+		loadImageSetFromDatabase(&image_set, cameraID, true);
 		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
 		for (int i = 0; i < 10; i++) {
 			std::cout << "Finding Chessboard: " << i << std::endl;
@@ -570,11 +606,9 @@ bool cameraCalibration( float focusLength, float sensorWidth, int listingID) {
 	}
 	return false;
 }
-
 void loadLocalCalibration() {
 
 }
-
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType) { //modifided from template method provided at: https://docs.opencv.org/trunk/d4/d94/tutorial_camera_calibration.html
 	corners.clear();
 	switch (patternType)
@@ -598,7 +632,6 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 		break;
 	}
 }
-
 void generateSparcePointCloud() {
 
 	InputArray cam1ProjectionMatrix = {};
