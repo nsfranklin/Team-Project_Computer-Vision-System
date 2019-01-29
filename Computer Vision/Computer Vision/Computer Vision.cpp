@@ -29,7 +29,7 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
-bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
+bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
 void undistortPoints();
 bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
@@ -40,7 +40,6 @@ int main()
 {
 	vector<int> vecPending;
 	vector<Mat> image_array = {};
-	vector<Mat> calibrationSet = {};
 	vector<vector<KeyPoint>> KeyPoints;
 	float focusLength = 4.4f; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
 	float sensorWidth = 6.17f; //also the value of my mobile phone.
@@ -49,7 +48,7 @@ int main()
 
 		if (determinePending(vecPending)) {
 
-			cameraCalibration(calibrationSet, focusLength, sensorWidth, vecPending[0]);//checks for local calibration. Then calibrates if not present.
+			cameraCalibration(focusLength, sensorWidth, vecPending[0]);//checks for local calibration. Then calibrates if not present.
 			loadImageSetFromDatabase(&image_array, vecPending[0]); //Parameters: The image array to load them into, the Listing ID for the Image
 
 			if (image_array.empty())
@@ -93,9 +92,38 @@ int main()
 }
 
 void setStateAvailable(int listingID) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
 
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+		stmt = con->prepareStatement("UPDATE Product SET State = 'available' WHERE ListingID = ? AND State = 'pending';");
+		stmt->setInt(1,listingID);
+		res = stmt->executeQuery();
+		delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
 }
-bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera.
+bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera. creates dir if not present
 	std::string dirs = "camera_calibrations";
 	LPCWSTR dir = (LPCWSTR)dirs.c_str();
 	if (CreateDirectory(dir , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
@@ -180,10 +208,8 @@ bool determinePending(std::vector<int> &vecPending) { //returns list of pending 
 	if (vecPending.empty()) {
 		return false;
 	}
-
 	return true;
-
-}//adds the listingID of currently pending listing that need there models to be generated
+}	//adds the listingID of currently pending listing that need there models to be generated
 void insertImages(vector<Mat> *image_set, int listingID, int length) {
 	try {
 		sql::Driver *driver;
@@ -481,12 +507,12 @@ int findCameraID(int listingID) {
 		return cameraID;
 	}
 }
-bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWidth, int listingID) {
+bool cameraCalibration( float focusLength, float sensorWidth, int listingID) {
 
 	std::cout << "starting calibration" << std::endl;
-
+	vector<Mat> image_set;
 	bool methodSuccess;
-	Size imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);                                 //all the images need to be of a fixed resolution
+	Size imageSetSize;                               //all the images need to be of a fixed resolution
 	Size chessboardSize = cv::Size(7, 9);
 	int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
 	vector<vector<Point2f>> cornersMatrix;
@@ -496,6 +522,8 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 	int cameraID = findCameraID(listingID);
 	if (!checkLocalCalibration(cameraID)) {
 
+		loadImageSet(&image_set, 10, 'c');
+		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
 		for (int i = 0; i < 10; i++) {
 			std::cout << "Finding Chessboard: " << i << std::endl;
 
@@ -519,6 +547,7 @@ bool cameraCalibration(vector<Mat> image_set, float focusLength, float sensorWid
 
 		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
 		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+		std::cout << "Constructing World Space Points Array" << std::endl;
 		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
 		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
 
@@ -552,10 +581,11 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 	{
 	case 1: //chessboard
 	case 2: //Circles_Grid
+		std::cout << "Constructing Corner Array" << std::endl;
 		for (int i = 0; i < boardSize.height; ++i) {
 			for (int j = 0; j < boardSize.width; ++j) {
 				corners.push_back(Point3f(j*squareSize, i*squareSize, 0));
-				std::cout << "board corner position" << std::endl;
+				
 			}
 		}
 		break;
