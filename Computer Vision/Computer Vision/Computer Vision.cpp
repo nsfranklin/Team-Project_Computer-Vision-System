@@ -33,7 +33,7 @@ bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //t
 void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID);
 bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
-void loadLocalCalibration();
+void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
 
@@ -69,7 +69,7 @@ int main()
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
-			undistortAllPoints(KeyPoints, undistortKeyPoints , vecPending[0]);
+			undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]);
 			triangulatePoints();
 
 			std::cout << "Keypoints detected in image" << std::endl;
@@ -490,7 +490,6 @@ bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 
 	}
 	else {
-		loadLocalCalibration();
 	}
 	return false;
 }
@@ -596,7 +595,7 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID) {
 	vector<KeyPoint> temp = {};
 	Mat cameraMatrix, distortionCoeff;
-	loadLocalCalibration(listingID, );
+	loadLocalCalibration(listingID, cameraMatrix);
 	for (int i = 0 ; i < 1; i++) {
 		undistortedKeypoints.push_back(temp);
 		undistortPoints(keypoints[i],undistortedKeypoints[i], cameraMatrix, distortionCoeff);
