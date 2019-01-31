@@ -30,7 +30,7 @@ void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
-void undistortAllPoints();
+void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID);
 bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration();
@@ -42,6 +42,7 @@ int main()
 	vector<int> vecPending;
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
+	vector<vector<KeyPoint>> undistortedKeyPoints;
 	float focusLength = 4.4f; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
 	float sensorWidth = 6.17f; //also the value of my mobile phone.
 
@@ -68,7 +69,7 @@ int main()
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
-			undistortPoints();
+			undistortAllPoints(KeyPoints, undistortKeyPoints , vecPending[0]);
 			triangulatePoints();
 
 			std::cout << "Keypoints detected in image" << std::endl;
@@ -565,7 +566,8 @@ int findCameraID(int listingID) {
 		return cameraID;
 	}
 }
-void loadLocalCalibration() {
+void loadLocalCalibration(int listingID, Mat cameraMatrix) {
+	int cameraID = findCameraID(listingID);
 
 }
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType) { //modifided from template method provided at: https://docs.opencv.org/trunk/d4/d94/tutorial_camera_calibration.html
@@ -591,11 +593,13 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 		break;
 	}
 }
-void undistortAllPoints() {
-
-	loadLocalCalibration();
-	for (int i = 0 ; i < .length(); i++) {
-		undistortPoints();
+void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID) {
+	vector<KeyPoint> temp = {};
+	Mat cameraMatrix, distortionCoeff;
+	loadLocalCalibration(listingID, );
+	for (int i = 0 ; i < 1; i++) {
+		undistortedKeypoints.push_back(temp);
+		undistortPoints(keypoints[i],undistortedKeypoints[i], cameraMatrix, distortionCoeff);
 	}
 
 }
