@@ -12,15 +12,18 @@
 #include <thread>
 #include <time.h>
 #include <windows.h>
+#include <boost/algorithm/string.hpp>
+#include <string>
 
 using namespace std;
 using namespace cv;
 using namespace ::mysqlx;
+using namespace boost;
 
 void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
-void objToMySQL(String filename);
+void objToMySQL(String filename, int ListingID, int ModelID);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID, bool isCalibration);
 bool determinePending(std::vector<int> &vecPending);
@@ -598,7 +601,7 @@ void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPo
 	loadLocalCalibration(listingID, cameraMatrix);
 	for (int i = 0 ; i < 1; i++) {
 		undistortedKeypoints.push_back(temp);
-		undistortPoints(keypoints[i],undistortedKeypoints[i], cameraMatrix, distortionCoeff);
+		//undistortPoints(keypoints[i],undistortedKeypoints[i], cameraMatrix, distortionCoeff);
 	}
 
 }
@@ -617,7 +620,7 @@ void generateSparcePointCloud() {
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
 
 }
-void objToMySQL(String filename) {
+void objToMySQL(String filename, int listingID, int modelID) {
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -634,13 +637,27 @@ void objToMySQL(String filename) {
 			std::cout << "Connection Open" << std::endl;
 		}
 
+
+		std::ifstream inObj(filename);
+		std::string data((std::istreambuf_iterator<char>(inObj)),
+			(std::istreambuf_iterator<char>()));
+
+		std::cout << data << std::endl;
+
+		std::string sqlInsert = "INSERT INTO Model (ModelID, ModelString, ListingID) VALUES (" + to_string(modelID);
+		sqlInsert = sqlInsert + ",\"" + data;
+		sqlInsert = sqlInsert + "\"," + to_string(listingID) + ")";
+		
+		std::cout << sqlInsert << std::endl;
+		boost::replace_all(sqlInsert, "\r\n", "_");
+		std::cout << sqlInsert << std::endl;
+
+
 		stmt = con->createStatement();
-		stmt->executeQuery("SELECT * AS _message");
+		stmt->execute(sqlInsert.c_str());
 
 		delete stmt;
 		delete con;
-
-
 	}
 	catch (sql::SQLException &e) {
 		cout << "# ERR: SQLException in " << __FILE__;
