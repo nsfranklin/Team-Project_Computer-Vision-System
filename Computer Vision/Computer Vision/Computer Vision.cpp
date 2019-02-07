@@ -33,7 +33,6 @@ void generateSparcePointCloud();
 void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
-void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID);
 bool triangulatePoints();
 bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
@@ -42,6 +41,7 @@ void setStatePending(int listingID);
 
 int main()
 {
+
 	vector<int> vecPending;
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
@@ -655,6 +655,7 @@ void objToMySQL(String filename, int listingID, int modelID) {
 
 		stmt = con->createStatement();
 		stmt->execute(sqlInsert.c_str());
+		inObj.close();
 
 		delete stmt;
 		delete con;
