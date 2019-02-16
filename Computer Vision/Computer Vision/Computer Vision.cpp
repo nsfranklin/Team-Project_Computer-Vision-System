@@ -38,6 +38,7 @@ bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
+void undistortAllImages();
 
 int main()
 {
@@ -61,6 +62,8 @@ int main()
 			else
 				std::cout << "Image Set Loaded" << std::endl;
 
+			undistortAllImages(&image_array);
+
 			featureMatching(image_array, &KeyPoints);
 			std::cout << "Keypoint Detection complete" << std::endl;
 
@@ -72,8 +75,8 @@ int main()
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
-			undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]);
-			triangulatePoints();
+			//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
+			dummyTriangulatePoints();
 
 			std::cout << "Keypoints detected in image" << std::endl;
 			std::cout << KeyPoints[0].size() << std::endl;
@@ -127,6 +130,11 @@ void setStateAvailable(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
+
+void undistortAllImages(vector<Mat> *ImageSet) {
+
+}
+
 void setStatePending(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -399,15 +407,10 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	orb->detect(image_set, temp, mask); //detect is used as it can take a vector<Mat> rather than detectAndCompute
 	*keyPointVec = temp;
 	std::cout << "Detection Completed" << std::endl;
-
-
-
 	std::cout << "Computing Descriptors" << std::endl;
 	orb->compute(image_set, temp, vecDescriptors);
 	std::cout << "Descriptors Computed" << std::endl;
-
 	FlannBasedMatcher matcher;
-
 	std::vector<vector<DMatch>> vecGoodMatches;
 	std::vector<DMatch> GoodMatch;
 		
@@ -608,6 +611,14 @@ void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPo
 bool triangulatePoints() {
 	return true;
 }
+bool dummyTriangulatePoints() {
+
+}
+
+bool dummyGenerateSparcePointCloud() {
+	
+}
+
 void generateSparcePointCloud() {
 
 	InputArray cam1ProjectionMatrix = {};
@@ -647,11 +658,7 @@ void objToMySQL(String filename, int listingID, int modelID) {
 		std::string sqlInsert = "INSERT INTO Model (ModelID, ModelString, ListingID) VALUES (" + to_string(modelID);
 		sqlInsert = sqlInsert + ",\"" + data;
 		sqlInsert = sqlInsert + "\"," + to_string(listingID) + ")";
-		
-		std::cout << sqlInsert << std::endl;
-		boost::replace_all(sqlInsert, "\r\n", "_");
-		std::cout << sqlInsert << std::endl;
-
+	
 
 		stmt = con->createStatement();
 		stmt->execute(sqlInsert.c_str());
