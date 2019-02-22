@@ -170,9 +170,7 @@ void setStatePending(int listingID) {
 	}
 }
 bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera. creates dir if not present
-	std::string dirs = "camera_calibrations";
-	LPCWSTR dir = (LPCWSTR)dirs.c_str();
-	if (CreateDirectory(dir , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
+	if (CreateDirectory(dirs , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
 	{
 		return false; //If you need to make the dir then there is no saved data.
 	}
