@@ -24,9 +24,10 @@ void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
 void objToMySQL(String filename, int ListingID, int ModelID);
+void objToMySQL(int ListingID);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID, bool isCalibration);
-bool determinePending(std::vector<int> &vecPending);
+int determinePending(int pendingID);
 bool MeshXYZToOBJ(int ListingID);
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType);
 void generateSparcePointCloud();
@@ -38,12 +39,14 @@ bool checkLocalCalibration(int cameraID);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
-void undistortAllImages();
+void undistortAllImages(vector<Mat> *image_set);
+void dummyTriangulatePoints(int listingID);
+void dummyDensification();
 
 int main()
 {
 
-	vector<int> vecPending;
+	int pendingListingID = -1;
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
 	vector<vector<KeyPoint>> undistortedKeyPoints;
@@ -52,10 +55,14 @@ int main()
 
 	while(true) {
 
-		if (determinePending(vecPending)) {
+		std::cout << "Populating Pending Listing Array" << std::endl;
 
-			cameraCalibration(focusLength, sensorWidth, vecPending[0]);//checks for local calibration. Then calibrates if not present.
-			loadImageSetFromDatabase(&image_array, vecPending[0], false); //Parameters: The image array to load them into, the Listing ID for the Image
+		pendingListingID = determinePending(pendingListingID);
+
+		if (pendingListingID != -1) {
+
+			cameraCalibration(focusLength, sensorWidth, pendingListingID);//checks for local calibration. Then calibrates if not present.
+			loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
 
 			if (image_array.empty())
 				std::cout << "Failed to load image set" << std::endl;
@@ -65,24 +72,36 @@ int main()
 			undistortAllImages(&image_array);
 
 			featureMatching(image_array, &KeyPoints);
-			std::cout << "Keypoint Detection complete" << std::endl;
+			std::cout << "Keypointed and Feature Detection complete" << std::endl;
 
 			Mat sampleImage = image_array[2];								//sample to show keypoints
-
 			Mat sampleWithKeyPoints;										//output image with rich keypoints
 			int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
 			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
+
 			//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
-			dummyTriangulatePoints();
+			
+			dummyTriangulatePoints(pendingListingID);
+			
+			dummyDensification();
 
-			std::cout << "Keypoints detected in image" << std::endl;
-			std::cout << KeyPoints[0].size() << std::endl;
+			MeshXYZToOBJ(pendingListingID);
 
+			objToMySQL(pendingListingID);
+
+			std::cout << "Keypointed and Feature Detection complete" << std::endl;
+
+
+			
+			
 			//setStateAvailable(vecPending[0]);
-			vecPending.erase(vecPending.begin());
+			//vecPending.erase(vecPending.begin());
+
+			std::cout << "Removed first pending value" << std::endl;
+
 
 		}
 		else {
@@ -91,12 +110,13 @@ int main()
 			std::this_thread::sleep_for(std::chrono::milliseconds(5000)); //sleeps for 5 seconds then checks again.
 		}
 
-		break; //TEMP BREAKCLAUSE FOR TESTING
+		//break; //TEMP BREAKCLAUSE FOR TESTING
+
+		//cv::waitKey(0);
+
 	}
 
-	cv::waitKey(0);
 
-	return 0;
 }
 void setStateAvailable(int listingID) {
 	try {
@@ -169,7 +189,10 @@ void setStatePending(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
+
+
 bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera. creates dir if not present
+	/*
 	if (CreateDirectory(dirs , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
 	{
 		return false; //If you need to make the dir then there is no saved data.
@@ -185,7 +208,10 @@ bool checkLocalCalibration(int cameraID) {//checks for local calibration files f
 			return true;
 		}
 	}
+	*/
+	return false;
 }
+
 bool checkCameraParameters(int listingID) { //checks for camera information in database
 	if (findCameraID(listingID) != -1){
 		return true;
@@ -195,8 +221,9 @@ bool checkCameraParameters(int listingID) { //checks for camera information in d
 		return false;
 	}
 }
-bool determinePending(std::vector<int> &vecPending) { //returns list of pending listingID. Pending if the state is pending and the camer
-	int pendingID;
+int determinePending(int pendingID) { //returns list of pending listingID. Pending if the state is pending and the camer
+	int counter = 0;
+
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -216,18 +243,10 @@ bool determinePending(std::vector<int> &vecPending) { //returns list of pending 
 		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending' AND CameraID IS NOT NULL");
 		res = stmt->executeQuery();
 
-		int count = 0;
-		while (res->next()) {
+		if(res->next()) {
 			std::cout << "Listing: " << res->getInt(1) << " pending." << std::endl;
 			pendingID = res->getInt(1);
-
-			if (vecPending.empty()) {
-				vecPending.push_back(pendingID);
-				std::cout << res->getInt(1) << std::endl;
-			}
-			else if (pendingID > vecPending.back()) {
-				vecPending.push_back(pendingID);
-			}
+			counter++;
 		}
 
 		delete res;
@@ -242,10 +261,10 @@ bool determinePending(std::vector<int> &vecPending) { //returns list of pending 
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 
-	if (vecPending.empty()) {
-		return false;
+	if (counter == 0) {
+		return -1;
 	}
-	return true;
+	return pendingID;
 }	//adds the listingID of currently pending listing that need there models to be generated
 void insertImages(vector<Mat> *image_set, int listingID, int length) {
 	try {
@@ -439,7 +458,7 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 }
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 
-	std::cout << "starting calibration" << std::endl;
+	std::cout << "Starting calibration on listing " << listingID << std::endl;
 	vector<Mat> image_set;
 	bool methodSuccess;
 	Size imageSetSize;                               //all the images need to be of a fixed resolution
@@ -515,11 +534,14 @@ bool MeshXYZToOBJ(int ListingID) {
 	code = system(cmdCString);
 
 	printf("Mesh Lab Exit Code: %d.\n", code);
-	cin.ignore();
+
 	if (code == 0) {
+		std::cout << "Meshing Successful" << std::endl;
+
 		return true;
 	}
 	else {
+		std::cout << "Meshing failed. Error Code: " << code << std::endl;
 		return false;
 	}
 
@@ -609,12 +631,28 @@ void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPo
 bool triangulatePoints() {
 	return true;
 }
-bool dummyTriangulatePoints() {
 
+void dummyTriangulatePoints(int listingID) {
+	std::cout << "Dummy Triangulate Coping bunny.xyz" << std::endl;
+	String fileOutName = to_string(listingID) + ".xyz";
+	
+	String fileOutPath = "c:\\MeshingFolder\\" + fileOutName;
+
+	
+	ifstream source("bunny.xyz", ios::binary);
+	ofstream dest(fileOutPath, ios::binary);
+
+	istreambuf_iterator<char> begin_source(source);
+	istreambuf_iterator<char> end_source;
+	ostreambuf_iterator<char> begin_dest(dest);
+	copy(begin_source, end_source, begin_dest);
+
+	source.close();
+	dest.close();
 }
 
-bool dummyGenerateSparcePointCloud() {
-	
+void dummyDensification() {
+	std::cout << "Dummy Densify Called" << std::endl;
 }
 
 void generateSparcePointCloud() {
@@ -629,6 +667,8 @@ void generateSparcePointCloud() {
 	triangulatePoints(cam1ProjectionMatrix, cam2ProjectionMatrix, cam1Points, cam2Points, Output);
 
 }
+
+//Utility function version
 void objToMySQL(String filename, int listingID, int modelID) {
 	try {
 		sql::Driver *driver;
@@ -672,5 +712,58 @@ void objToMySQL(String filename, int listingID, int modelID) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
-}
+} 
 
+void objToMySQL(int listingID) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::Statement *stmt;
+		
+		String listingIDSTR = to_string(listingID);
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+
+		String filename = "c:\\MeshingFolder\\" + listingIDSTR;
+		filename = filename + ".obj";
+
+		std::ifstream inObj(filename);
+		std::string data((std::istreambuf_iterator<char>(inObj)),(std::istreambuf_iterator<char>()));
+
+
+		std::string sqlInsert = "INSERT INTO Model (ModelID, ModelString, ListingID) VALUES (" + listingIDSTR;
+		sqlInsert = sqlInsert + ",\"" + data;
+		sqlInsert = sqlInsert + "\"," + listingIDSTR + ")";
+
+
+		stmt = con->createStatement();
+		stmt->execute(sqlInsert.c_str());
+		
+		std::cout << "Inserted " << listingID << ".obj into DB" << std::endl;
+		
+		inObj.close();
+
+		std::cout << "Object instream closed" << std::endl;
+
+
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+
+}
