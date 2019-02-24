@@ -43,6 +43,7 @@ void undistortAllImages(vector<Mat> *image_set);
 void dummyTriangulatePoints(int listingID);
 void dummyDensification();
 
+/*
 int main()
 {
 
@@ -55,7 +56,7 @@ int main()
 
 	while(true) {
 
-		std::cout << "Populating Pending Listing Array" << std::endl;
+		std::cout << "Determined Pending Listing" << std::endl;
 
 		pendingListingID = determinePending(pendingListingID);
 
@@ -94,13 +95,11 @@ int main()
 
 			std::cout << "Keypointed and Feature Detection complete" << std::endl;
 
-
+			image_array.clear();
 			
 			
 			//setStateAvailable(vecPending[0]);
-			//vecPending.erase(vecPending.begin());
 
-			std::cout << "Removed first pending value" << std::endl;
 
 
 		}
@@ -112,12 +111,12 @@ int main()
 
 		//break; //TEMP BREAKCLAUSE FOR TESTING
 
-		//cv::waitKey(0);
+		cv::waitKey(0);
 
 	}
-
-
 }
+*/
+
 void setStateAvailable(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -427,7 +426,9 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	std::cout << "Computing Descriptors" << std::endl;
 	orb->compute(image_set, temp, vecDescriptors);
 	std::cout << "Descriptors Computed" << std::endl;
-	FlannBasedMatcher matcher;
+
+	FlannBasedMatcher matcher(new cv::flann::LshIndexParams(20, 10, 2));; //This sets up flann to work with ORB discriptors 
+
 	std::vector<vector<DMatch>> vecGoodMatches;
 	std::vector<DMatch> GoodMatch;
 		
@@ -436,12 +437,6 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 		for (j = i ; j < vecDescriptors.size() ; j++) { //further Optimisation! 
 			if (i != j) {  //Matching identical descriptors is pointless.
 				std::cout << "finding matches:" << i << "," << j << std::endl;
-				if (vecDescriptors[i].type() != CV_32F) {
-					vecDescriptors[i].convertTo(vecDescriptors[i], CV_32F);
-				}
-				if (vecDescriptors[j].type() != CV_32F) {
-					vecDescriptors[j].convertTo(vecDescriptors[j], CV_32F);
-				}
 				matcher.match(vecDescriptors[i], vecDescriptors[j], GoodMatch);
 				vecGoodMatches.push_back(GoodMatch);
 			}
@@ -767,3 +762,4 @@ void objToMySQL(int listingID) {
 	}
 
 }
+
