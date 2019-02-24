@@ -46,9 +46,9 @@ int main() {
 
 void keypointTesting(vector<Mat> image_set){
 	int nfeature = 500; //max number of feature to keep
-	float scaleFactor = 1.25f; //Effectly this is a measure of precision
+	float scaleFactor = 1.2f; //Effectly this is a measure of precision
 	int edgeThreshold = 31; //Rather clear. How much of the edge should be ignored for feature detection
-	int firstLevel = 0; //Don't really understand this at the moment. Seems to be useful in optimising.
+	int firstLevel = 2; 
 	int nlevels = 8;
 	int WTA_K = 2;
 	int scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
