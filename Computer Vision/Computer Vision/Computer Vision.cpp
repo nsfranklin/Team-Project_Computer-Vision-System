@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <boost/algorithm/string.hpp>
 #include <string>
+#include <fstream>
 
 using namespace std;
 using namespace cv;
@@ -35,7 +36,7 @@ void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
 bool triangulatePoints();
-bool checkLocalCalibration(int cameraID);
+int loadCameraDetails(int cameraID, float &focusLength, float &sensorWidth);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
@@ -43,7 +44,7 @@ void undistortAllImages(vector<Mat> *image_set);
 void dummyTriangulatePoints(int listingID);
 void dummyDensification();
 
-/*
+
 int main()
 {
 
@@ -51,8 +52,8 @@ int main()
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
 	vector<vector<KeyPoint>> undistortedKeyPoints;
-	float focusLength = 4.4f; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
-	float sensorWidth = 6.17f; //also the value of my mobile phone.
+	float focusLength; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
+	float sensorWidth; //also the value of my mobile phone.
 
 	while(true) {
 
@@ -62,7 +63,11 @@ int main()
 
 		if (pendingListingID != -1) {
 
-			cameraCalibration(focusLength, sensorWidth, pendingListingID);//checks for local calibration. Then calibrates if not present.
+			loadCameraDetails(pendingListingID, focusLength, sensorWidth);
+
+			std::cout << focusLength << "  " << sensorWidth << std::endl;
+
+			cameraCalibration(focusLength, sensorWidth, pendingListingID); //checks for local calibration. Then calibrates if not present.
 			loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
 
 			if (image_array.empty())
@@ -77,8 +82,7 @@ int main()
 
 			Mat sampleImage = image_array[2];								//sample to show keypoints
 			Mat sampleWithKeyPoints;										//output image with rich keypoints
-			int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
-			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), flags);
+			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 			namedWindow("image", WINDOW_NORMAL);
 			imshow("image", sampleWithKeyPoints);
 
@@ -115,7 +119,7 @@ int main()
 
 	}
 }
-*/
+
 
 void setStateAvailable(int listingID) {
 	try {
@@ -189,27 +193,57 @@ void setStatePending(int listingID) {
 	}
 }
 
+int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
+	int cameraID = findCameraID(listingID);
+	float tempFocusLength;
+	float tempSensorWidth;
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
 
-bool checkLocalCalibration(int cameraID) {//checks for local calibration files for a camera. creates dir if not present
-	/*
-	if (CreateDirectory(dirs , NULL) || ERROR_ALREADY_EXISTS == GetLastError())
-	{
-		return false; //If you need to make the dir then there is no saved data.
-	}
-	else
-	{
-		String filePath = "../camera_calibrations/" + to_string(cameraID) + ".txt";
-		ifstream inf(filePath);
-		if (!inf) {
-			return false;
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		/* Connect to the MySQL test database */
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
 		}
-		else {
-			return true;
-		}
+		stmt = con->prepareStatement("SELECT FocusLength, SensorSize FROM CameraDetails WHERE CameraID = ?");
+		stmt->setInt(1, cameraID);
+		res = stmt->executeQuery();
+
+		res->next();
+		tempSensorWidth = (float)res->getDouble("FocusLength");
+		tempFocusLength = (float)res->getDouble("SensorSize");
+
+
+		delete res;
+		delete stmt;
+		delete con;
 	}
-	*/
-	return false;
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+	if (cameraID == -1) {
+		return -1;
+	}
+	else {
+		focusLength = tempFocusLength;
+		sensorWidth = tempSensorWidth;
+		std::cout << tempFocusLength << "   " << tempSensorWidth << std::endl;
+		return cameraID;
+	}
 }
+
 
 bool checkCameraParameters(int listingID) { //checks for camera information in database
 	if (findCameraID(listingID) != -1){
@@ -402,13 +436,13 @@ void loadImageSet(vector<Mat> *image_set, int Length) {
 	return;
 }
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec) {
-	int nfeature = 500; //max number of feature to keep
+	int nfeature = 4000; //max number of feature to keep
 	float scaleFactor = 1.2f; //Effectly this is a measure of precision
 	int edgeThreshold = 20; //Rather clear. How much of the edge should be ignored for feature detection
 	int firstLevel = 0; //Don't really understand this at the moment. Seems to be useful in optimising.
 	int nlevels = 8;
-	int WTA_K = 2 ; //  ''
-	int scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
+	int WTA_K = 2 ; //  
+	cv::ORB::ScoreType scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
 	int patchSize = 31; //This size of patches by BRIEF when descripting and matching keypoints found by FAST
 	int fastThreshold = 20; //default seems to be 20. It is the threshold in intinity different between the pixel at the center and the points round it.
 	Mat mask = Mat(); //option part of detect. strange its still a needed parameter
@@ -445,7 +479,7 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 
 	Mat imageMatches;
 
-	drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , 2);
+	drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , DrawMatchesFlags::DEFAULT);
 
 	namedWindow("Some OK Matches", WINDOW_NORMAL);
 	
@@ -464,52 +498,41 @@ bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
 	int count = 0;
 	int cameraID = findCameraID(listingID);
-	if (!checkLocalCalibration(cameraID)) {
-		loadImageSetFromDatabase(&image_set, cameraID, true);
-		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
-		for (int i = 0; i < 10; i++) {
-			std::cout << "Finding Chessboard: " << i << std::endl;
-			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
-			cornersMatrix.push_back(cornersTemp);
-			if (methodSuccess) {
-				std::cout << "Chessboard Detected" << std::endl;
-			}
-			else
-			{
-				std::cout << "Chessboard Not Detected " << std::endl;
-				cornersMatrix.push_back({});
-			}
-			count = count + 1;
+
+	loadImageSetFromDatabase(&image_set, cameraID, true);
+	imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
+	for (int i = 0; i < 10; i++) {
+		std::cout << "Finding Chessboard: " << i << std::endl;
+		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+		cornersMatrix.push_back(cornersTemp);
+		if (methodSuccess) {
+			std::cout << "Chessboard Detected" << std::endl;
 		}
-		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;   //Focus Length in 4.4mm Sensor Width in MM 6.17 of my Sony XZ Premium
-		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
-		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
-		std::cout << "Constructing World Space Points Array" << std::endl;
-		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
-		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
-
-		Mat cameraMatrix;
-		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
-		vector<Mat>  rvec, tvec;  //Output
-		int flag = 0;
-
-		//OutputArray stdDevIntrinsics = {}; //Output
-		//OutputArray stdDevExtrinsics = {}; //Output
-		//OutputArray perViewErrors = {}; //Output
-
-		//calculateCameraMatrix();
-
-		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-
-		ofstream calibrationFile;
-		std::string fileName = to_string(cameraID) + ".txt";
-		calibrationFile.open(fileName);
-
-
+		else
+		{
+			std::cout << "Chessboard Not Detected " << std::endl;
+			cornersMatrix.push_back({});
+		}
+		count = count + 1;
 	}
-	else {
-	}
-	return false;
+
+	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;  
+	vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+
+	calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+		
+	std::cout << "Constructing World Space Points Array" << std::endl;
+	worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+	worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
+
+	Mat cameraMatrix;
+	Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
+	vector<Mat>  rvec, tvec;  //Output
+	int flag = 0;
+
+	calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+
+	return true;
 }
 bool MeshXYZToOBJ(int ListingID) {
 	std::string cmdFrag1 = "cd C:\\Program Files\\VCG\\MeshLab && meshlabserver -i c:\\MeshingFolder\\";
@@ -588,7 +611,6 @@ int findCameraID(int listingID) {
 }
 void loadLocalCalibration(int listingID, Mat cameraMatrix) {
 	int cameraID = findCameraID(listingID);
-
 }
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType) { //modifided from template method provided at: https://docs.opencv.org/trunk/d4/d94/tutorial_camera_calibration.html
 	corners.clear();
@@ -613,6 +635,7 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 		break;
 	}
 }
+
 void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID) {
 	vector<KeyPoint> temp = {};
 	Mat cameraMatrix, distortionCoeff;
@@ -623,6 +646,7 @@ void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPo
 	}
 
 }
+
 bool triangulatePoints() {
 	return true;
 }
@@ -635,7 +659,7 @@ void dummyTriangulatePoints(int listingID) {
 
 	
 	ifstream source("bunny.xyz", ios::binary);
-	ofstream dest(fileOutPath, ios::binary);
+	ofstream dest(fileOutPath);
 
 	istreambuf_iterator<char> begin_source(source);
 	istreambuf_iterator<char> end_source;
@@ -708,7 +732,6 @@ void objToMySQL(String filename, int listingID, int modelID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 } 
-
 void objToMySQL(int listingID) {
 	try {
 		sql::Driver *driver;

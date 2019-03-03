@@ -25,7 +25,7 @@ void keypointTesting(vector<Mat> image_set);
 void loadTestImageSet(vector<Mat> *image_set, int Length);
 
 
-
+/*
 int main() {
 
 	vector<Mat> image_set;
@@ -41,17 +41,17 @@ int main() {
 
 	waitKey(0);
 
-}
+}*/
 
 
 void keypointTesting(vector<Mat> image_set){
-	int nfeature = 500; //max number of feature to keep
+	int nfeature = 16000; //max number of feature to keep
 	float scaleFactor = 1.2f; //Effectly this is a measure of precision
 	int edgeThreshold = 31; //Rather clear. How much of the edge should be ignored for feature detection
-	int firstLevel = 2; 
+	int firstLevel = 0; 
 	int nlevels = 8;
 	int WTA_K = 2;
-	int scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
+	cv::ORB::ScoreType scoreType = cv::ORB::HARRIS_SCORE; //This is used to rank features to determine the best. A faster alternative is FAST_SCORE
 	int patchSize = 31; //This size of patches by BRIEF when descripting and matching keypoints found by FAST
 	int fastThreshold = 20; //default seems to be 20. It is the threshold in intinity different between the pixel at the center and the points round it.
 	Mat mask = Mat(); 
@@ -79,8 +79,7 @@ void keypointTesting(vector<Mat> image_set){
 
 	for (int i = 0; i < image_set.size(); i++) {
 										//output image with rich keypoints
-		int flags = DrawMatchesFlags::DEFAULT + DrawMatchesFlags::DRAW_RICH_KEYPOINTS;
-		drawKeypoints(image_set[i], temp[i], outImage , Scalar::all(-1), flags);
+		drawKeypoints(image_set[i], temp[i], outImage , Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 		//namedWindow(to_string(i), WINDOW_NORMAL);
 		//resizeWindow(to_string(i), 2880, 2160);
 		outPath = "C:\\Users\\Nick\\Desktop\\ImageOutput\\";
