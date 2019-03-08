@@ -25,10 +25,10 @@ void loadImageSet(vector<Mat> *image_set, int Length);
 void loadImageSet(vector<Mat> *image_set, int Length, char prefix);
 void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVec);
 void objToMySQL(String filename, int ListingID, int ModelID);
-void objToMySQL(int ListingID);
+bool objToMySQL(int ListingID);
 void insertImages(vector<Mat> *image_set, int listingID, int length);
 void loadImageSetFromDatabase(vector<Mat> *image_set, int ListingID, bool isCalibration);
-int determinePending(int pendingID);
+int determinePending();
 bool MeshXYZToOBJ(int ListingID);
 void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners, int patternType);
 void generateSparcePointCloud();
@@ -36,75 +36,78 @@ void setStateAvailable(int ListingID);
 bool checkCameraParameters(int listingID);
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID); //the lenght and width are in mm
 bool triangulatePoints();
-int loadCameraDetails(int cameraID, float &focusLength, float &sensorWidth);
+int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
 void undistortAllImages(vector<Mat> *image_set);
 void dummyTriangulatePoints(int listingID);
 void dummyDensification();
-
+void setListingStateFailed(int listingID);
 
 int main()
 {
-
+	bool successful = true;
 	int pendingListingID = -1;
 	vector<Mat> image_array = {};
 	vector<vector<KeyPoint>> KeyPoints;
 	vector<vector<KeyPoint>> undistortedKeyPoints;
-	float focusLength; //TEMP value the value of my phone. Also a typical focus length for a mobile phone camera.
-	float sensorWidth; //also the value of my mobile phone.
+	float focusLength; 
+	float sensorWidth; 
 
-	while(true) {
+	while (true) {
 
 		std::cout << "Determined Pending Listing" << std::endl;
 
-		pendingListingID = determinePending(pendingListingID);
+		pendingListingID = determinePending(); //returns the pending ID. If there are no pending IDs -1 is returned.
 
 		if (pendingListingID != -1) {
+			if (loadCameraDetails(pendingListingID, focusLength, sensorWidth) > 0) {
+				cameraCalibration(focusLength, sensorWidth, pendingListingID); //checks for local calibration. Then calibrates if not present.
+				loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
+				if (image_array.empty())
+					std::cout << "Failed to load image set" << std::endl;
+				else
+					std::cout << "Image Set Loaded" << std::endl;
 
-			loadCameraDetails(pendingListingID, focusLength, sensorWidth);
+				undistortAllImages(&image_array);
 
-			std::cout << focusLength << "  " << sensorWidth << std::endl;
+				featureMatching(image_array, &KeyPoints);
+				std::cout << "Keypointed and Feature Detection complete" << std::endl;
 
-			cameraCalibration(focusLength, sensorWidth, pendingListingID); //checks for local calibration. Then calibrates if not present.
-			loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
-
-			if (image_array.empty())
-				std::cout << "Failed to load image set" << std::endl;
-			else
-				std::cout << "Image Set Loaded" << std::endl;
-
-			undistortAllImages(&image_array);
-
-			featureMatching(image_array, &KeyPoints);
-			std::cout << "Keypointed and Feature Detection complete" << std::endl;
-
-			Mat sampleImage = image_array[2];								//sample to show keypoints
-			Mat sampleWithKeyPoints;										//output image with rich keypoints
-			drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-			namedWindow("image", WINDOW_NORMAL);
-			imshow("image", sampleWithKeyPoints);
+				Mat sampleImage = image_array[2];								//sample to show keypoints
+				Mat sampleWithKeyPoints;										//output image with rich keypoints
+				drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+				namedWindow("image", WINDOW_NORMAL);
+				imshow("image", sampleWithKeyPoints);
 
 
-			//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
+				//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
+
+				dummyTriangulatePoints(pendingListingID);
+				dummyDensification();
+
+				MeshXYZToOBJ(pendingListingID);
+
+				successful = objToMySQL(pendingListingID);
+
+				std::cout << "Keypointed and Feature Detection complete" << std::endl;
 			
-			dummyTriangulatePoints(pendingListingID);
-			
-			dummyDensification();
+			}
+			else {
 
-			MeshXYZToOBJ(pendingListingID);
+				std::cout << ""
+			}
 
-			objToMySQL(pendingListingID);
-
-			std::cout << "Keypointed and Feature Detection complete" << std::endl;
 
 			image_array.clear();
-			
-			
-			//setStateAvailable(vecPending[0]);
+			KeyPoints.clear();
+			undistortedKeyPoints.clear();
 
-
+			if (successful) {
+				setStateAvailable(pendingListingID);
+			}
+			pendingListingID = -1;
 
 		}
 		else {
@@ -121,6 +124,88 @@ int main()
 }
 
 
+int determinePending() { //returns list of pending listingID. Pending if the state is pending and the camer
+	int counter = 0;
+	int pendingID;
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = get_driver_instance();
+
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending' AND CameraID IS NOT NULL LIMIT 1");
+		res = stmt->executeQuery();
+
+		if (res->next()) {
+			std::cout << "Listing: " << res->getInt(1) << " pending." << std::endl;
+			pendingID = res->getInt(1);
+			counter++;
+		}
+
+		delete res;
+		delete stmt;
+		delete con;
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+		return -1;
+	}
+
+	if (counter == 0) {
+		std::cout << "No pending listings" << std::endl;
+		return -1;
+	}
+	return pendingID;
+}	//adds the listingID of currently pending listing that need there models to be generated
+void setListingStateFailed(int listingID) {
+	try {
+		sql::Driver *driver;
+		sql::Connection *con;
+		sql::PreparedStatement *stmt;
+		/* Create a connection */
+		driver = get_driver_instance();
+		std::cout << "Attempting to Connect" << std::endl;
+		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
+		
+		con->setSchema("cTeamTeamProjectDatabase");
+		if (!(con->isClosed())) {
+			std::cout << "Connection Open" << std::endl;
+		}
+
+		vector<uchar> buf = {};
+		stmt = con->prepareStatement("UPDATE `cTeamTeamProjectDatabase`.`Product` SET `State` = 'failed' WHERE (`ListingID` = ?)");
+
+		stmt->setInt(1, listingID);
+		stmt->execute();
+		std::cout << listingID << " state set to failed" << std::endl;
+
+		delete stmt;
+		delete con;
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+	}
+}
+
 void setStateAvailable(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -133,7 +218,7 @@ void setStateAvailable(int listingID) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
@@ -170,7 +255,7 @@ void setStatePending(int listingID) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
@@ -195,8 +280,8 @@ void setStatePending(int listingID) {
 
 int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 	int cameraID = findCameraID(listingID);
-	float tempFocusLength;
-	float tempSensorWidth;
+	float tempFocusLength = 0;
+	float tempSensorWidth = 0;
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -208,19 +293,22 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
-		stmt = con->prepareStatement("SELECT FocusLength, SensorSize FROM CameraDetails WHERE CameraID = ?");
+		stmt = con->prepareStatement("SELECT FocusLength, SensorSize FROM CameraDetails WHERE CameraID = ? AND FocusLength IS NOT NULL AND SensorSize IS NOT NULL");
 		stmt->setInt(1, cameraID);
 		res = stmt->executeQuery();
 
-		res->next();
-		tempSensorWidth = (float)res->getDouble("FocusLength");
-		tempFocusLength = (float)res->getDouble("SensorSize");
-
+		if (res->next()) {
+			tempSensorWidth = (float)res->getDouble("FocusLength");
+			tempFocusLength = (float)res->getDouble("SensorSize");
+		}
+		else {
+			std::cout << "Camera Details NULL" << std::endl;
+		}
 
 		delete res;
 		delete stmt;
@@ -239,7 +327,7 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 	else {
 		focusLength = tempFocusLength;
 		sensorWidth = tempSensorWidth;
-		std::cout << tempFocusLength << "   " << tempSensorWidth << std::endl;
+		std::cout <<"Focus Length " << tempFocusLength << " Sensor Width " << tempSensorWidth << std::endl;
 		return cameraID;
 	}
 }
@@ -254,51 +342,6 @@ bool checkCameraParameters(int listingID) { //checks for camera information in d
 		return false;
 	}
 }
-int determinePending(int pendingID) { //returns list of pending listingID. Pending if the state is pending and the camer
-	int counter = 0;
-
-	try {
-		sql::Driver *driver;
-		sql::Connection *con;
-		sql::PreparedStatement *stmt;
-		sql::ResultSet *res;
-
-		/* Create a connection */
-		driver = get_driver_instance();
-
-		std::cout << "Attempting to Connect" << std::endl;
-		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
-		con->setSchema("cTeamTeamProjectDatabase");
-		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
-		}
-		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending' AND CameraID IS NOT NULL");
-		res = stmt->executeQuery();
-
-		if(res->next()) {
-			std::cout << "Listing: " << res->getInt(1) << " pending." << std::endl;
-			pendingID = res->getInt(1);
-			counter++;
-		}
-
-		delete res;
-		delete stmt;
-		delete con;
-	}
-	catch (sql::SQLException &e) {
-		cout << "# ERR: SQLException in " << __FILE__;
-		cout << "(" << __FUNCTION__ << ") on line " << __LINE__ << endl;
-		cout << "# ERR: " << e.what();
-		cout << " (MySQL error code: " << e.getErrorCode();
-		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
-	}
-
-	if (counter == 0) {
-		return -1;
-	}
-	return pendingID;
-}	//adds the listingID of currently pending listing that need there models to be generated
 void insertImages(vector<Mat> *image_set, int listingID, int length) {
 	try {
 		sql::Driver *driver;
@@ -308,14 +351,14 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		driver = get_driver_instance();
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
 		}
 
 		vector<uchar> buf = {};
-		stmt = con->prepareStatement("INSERT INTO CaliImage(ImageID, ImageBlob, CameraID) VALUES(? , ? , ? )");
+		stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, listingID) VALUES(? , ? , ? )");
 
 		if (image_set->empty()) {
 			std::cout << "IMAGE SET NULL!" << std::endl;
@@ -329,7 +372,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 				bufstr += letter;
 			std::cout << "streamed" << std::endl;
 			std::istringstream str(bufstr);
-			stmt = con->prepareStatement("INSERT INTO CaliImage(ImageID, ImageBlob, CameraID) VALUES(? , ? , ? )");
+			stmt = con->prepareStatement("INSERT INTO Image(ImageID, ImageBlob, listingID) VALUES(? , ? , ? )");
 			stmt->setInt(1, i);
 			stmt->setBlob(2, &str);
 			stmt->setInt(3, listingID);
@@ -367,7 +410,7 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int tableID, bool isCalibr
 			stmt = con->prepareStatement("SELECT ImageBlob FROM CaliImage WHERE CameraID = ?");
 		}
 		else {
-			stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? and ImageID < 6");
+			stmt = con->prepareStatement("SELECT ImageBlob FROM Image WHERE ListingID = ? LIMIT 3");
 		}
 		std::cout << "Prepared Statement" << std::endl;
 		stmt->setInt(1, tableID); //either a camera or listing ID
@@ -427,7 +470,7 @@ void loadImageSet(vector<Mat> *image_set, int Length) {
 	vector<Mat> temp2;
 
 	for (int i = 0; i < Length; i++) {
-		temp = to_string(i) + ".jpg";
+		temp = to_string(i) + ".png";
 		temp2.push_back(imread(temp));
 		std::cout << "Image Loaded: " << i << std::endl;
 
@@ -577,7 +620,7 @@ int findCameraID(int listingID) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
@@ -635,7 +678,6 @@ void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>&
 		break;
 	}
 }
-
 void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPoint>> &undistortedKeypoints, int listingID) {
 	vector<KeyPoint> temp = {};
 	Mat cameraMatrix, distortionCoeff;
@@ -646,11 +688,9 @@ void undistortAllPoints(vector<vector<KeyPoint>> &keypoints, vector<vector<KeyPo
 	}
 
 }
-
 bool triangulatePoints() {
 	return true;
 }
-
 void dummyTriangulatePoints(int listingID) {
 	std::cout << "Dummy Triangulate Coping bunny.xyz" << std::endl;
 	String fileOutName = to_string(listingID) + ".xyz";
@@ -669,11 +709,9 @@ void dummyTriangulatePoints(int listingID) {
 	source.close();
 	dest.close();
 }
-
 void dummyDensification() {
 	std::cout << "Dummy Densify Called" << std::endl;
 }
-
 void generateSparcePointCloud() {
 
 	InputArray cam1ProjectionMatrix = {};
@@ -699,7 +737,7 @@ void objToMySQL(String filename, int listingID, int modelID) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
@@ -732,7 +770,8 @@ void objToMySQL(String filename, int listingID, int modelID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 } 
-void objToMySQL(int listingID) {
+bool objToMySQL(int listingID) {
+	
 	try {
 		sql::Driver *driver;
 		sql::Connection *con;
@@ -745,7 +784,7 @@ void objToMySQL(int listingID) {
 
 		std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
-		/* Connect to the MySQL test database */
+		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
 			std::cout << "Connection Open" << std::endl;
@@ -761,15 +800,18 @@ void objToMySQL(int listingID) {
 		std::string sqlInsert = "INSERT INTO Model (ModelID, ModelString, ListingID) VALUES (" + listingIDSTR;
 		sqlInsert = sqlInsert + ",\"" + data;
 		sqlInsert = sqlInsert + "\"," + listingIDSTR + ")";
-
-
 		stmt = con->createStatement();
-		stmt->execute(sqlInsert.c_str());
-		
-		std::cout << "Inserted " << listingID << ".obj into DB" << std::endl;
-		
-		inObj.close();
 
+		if (data.size() < 20) { //prevents empty object being inserted into the DB 
+			stmt->execute(sqlInsert.c_str());
+			std::cout << "Inserted " << listingID << ".obj into DB" << std::endl;
+		}
+		else {
+			std::cout << "Object empty not inserted" << std::endl;
+			setListingStateFailed(listingID);
+			return false;
+		}
+		inObj.close();
 		std::cout << "Object instream closed" << std::endl;
 
 
@@ -783,6 +825,6 @@ void objToMySQL(int listingID) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
-
+	return true;
 }
 

@@ -32,10 +32,10 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Computer Vision.cpp">
+    <ClCompile Include="OptimisingORB.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="OptimisingORB.cpp">
+    <ClCompile Include="ComputerVision.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
