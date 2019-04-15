@@ -45,6 +45,7 @@ void dummyTriangulatePoints(int listingID);
 void dummyDensification();
 void setListingStateFailed(int listingID);
 
+
 int main()
 {
 	bool successful = true;
@@ -77,11 +78,9 @@ int main()
 
 				Mat sampleImage = image_array[2];								//sample to show keypoints
 				Mat sampleWithKeyPoints;										//output image with rich keypoints
-				drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-				namedWindow("image", WINDOW_NORMAL);
-				imshow("image", sampleWithKeyPoints);
-
-
+				//drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+				//namedWindow("image", WINDOW_NORMAL);
+				//imshow("image", sampleWithKeyPoints);
 				//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
 
 				dummyTriangulatePoints(pendingListingID);
@@ -95,8 +94,7 @@ int main()
 			
 			}
 			else {
-
-				std::cout << ""
+				successful = false;
 			}
 
 
@@ -107,7 +105,11 @@ int main()
 			if (successful) {
 				setStateAvailable(pendingListingID);
 			}
+			else {
+				setListingStateFailed(pendingListingID);
+			}
 			pendingListingID = -1;
+			successful = true;
 
 		}
 		else {
@@ -308,6 +310,7 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 		}
 		else {
 			std::cout << "Camera Details NULL" << std::endl;
+			return -1; //If no camera details are present
 		}
 
 		delete res;
@@ -321,8 +324,8 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
-	if (cameraID == -1) {
-		return -1;
+	if (cameraID == -1) {//If the camera is -1. This shouldn't be possible but redendancy is error prevention seems prudent.
+		return -1; //
 	}
 	else {
 		focusLength = tempFocusLength;
@@ -389,6 +392,7 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		cout << "# ERR: " << e.what();
 		cout << " (MySQL error code: " << e.getErrorCode();
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+		return;
 	}
 } //Inserts images into DB for testing  
 void loadImageSetFromDatabase(vector<Mat> *image_set, int tableID, bool isCalibration) {
@@ -522,11 +526,11 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 
 	Mat imageMatches;
 
-	drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , DrawMatchesFlags::DEFAULT);
+	//drawMatches(image_set[0], temp[0], image_set[1], temp[1], vecGoodMatches[0], imageMatches, -1, -1, vector<char>() , DrawMatchesFlags::DEFAULT);
 
-	namedWindow("Some OK Matches", WINDOW_NORMAL);
+	//namedWindow("Some OK Matches", WINDOW_NORMAL);
 	
-	imshow("Some OK Matches", imageMatches);
+	//imshow("Some OK Matches", imageMatches);
 }
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 

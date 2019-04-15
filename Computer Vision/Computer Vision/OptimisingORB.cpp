@@ -41,12 +41,12 @@ int main() {
 
 	waitKey(0);
 
-}*/
-
+}
+*/
 
 void keypointTesting(vector<Mat> image_set){
-	int nfeature = 16000; //max number of feature to keep
-	float scaleFactor = 1.2f; //Effectly this is a measure of precision
+	int nfeature = 500; //max number of feature to keep
+	float scaleFactor = 1.3f; //Effectly this is a measure of precision
 	int edgeThreshold = 31; //Rather clear. How much of the edge should be ignored for feature detection
 	int firstLevel = 0; 
 	int nlevels = 8;
@@ -78,7 +78,7 @@ void keypointTesting(vector<Mat> image_set){
 	String outPath;
 
 	for (int i = 0; i < image_set.size(); i++) {
-										//output image with rich keypoints
+		//output image with rich keypoints
 		drawKeypoints(image_set[i], temp[i], outImage , Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 		//namedWindow(to_string(i), WINDOW_NORMAL);
 		//resizeWindow(to_string(i), 2880, 2160);
@@ -101,3 +101,4 @@ void loadTestImageSet(vector<Mat> *image_set, int Length) {
 	*image_set = temp2;
 	return;
 }
+
