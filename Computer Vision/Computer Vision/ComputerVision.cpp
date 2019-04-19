@@ -40,11 +40,11 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth);
 void loadLocalCalibration(int listingID, Mat cameraMatrix);
 int findCameraID(int listingID);
 void setStatePending(int listingID);
-void undistortAllImages(vector<Mat> *image_set);
 void dummyTriangulatePoints(int listingID);
 void dummyDensification();
 void setListingStateFailed(int listingID);
-
+bool checkForLocalCalibration(int listingID);
+bool saveCameraDetails(int listingID, Mat cameraMatrix, Mat distCoeffs);
 
 int main()
 {
@@ -55,6 +55,7 @@ int main()
 	vector<vector<KeyPoint>> undistortedKeyPoints;
 	float focusLength; 
 	float sensorWidth; 
+	String failureReason = "";
 
 	while (true) {
 
@@ -64,39 +65,42 @@ int main()
 
 		if (pendingListingID != -1) {
 			if (loadCameraDetails(pendingListingID, focusLength, sensorWidth) > 0) {
-				cameraCalibration(focusLength, sensorWidth, pendingListingID); //checks for local calibration. Then calibrates if not present.
-				loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
-				if (image_array.empty())
-					std::cout << "Failed to load image set" << std::endl;
-				else
-					std::cout << "Image Set Loaded" << std::endl;
+				if (cameraCalibration(focusLength, sensorWidth, pendingListingID)) { //checks for local calibration. Then calibrates if not present.
+					loadImageSetFromDatabase(&image_array, pendingListingID, false); //Parameters: The image array to load them into, the Listing ID for the Image
+					if (image_array.empty() || image_array.size() < 25 || image_array.size() > 40) {
 
-				undistortAllImages(&image_array);
+						featureMatching(image_array, &KeyPoints);
+						std::cout << "Keypointed and Feature Detection complete" << std::endl;
 
-				featureMatching(image_array, &KeyPoints);
-				std::cout << "Keypointed and Feature Detection complete" << std::endl;
+						Mat sampleImage = image_array[2];								//sample to show keypoints
+						Mat sampleWithKeyPoints;										//output image with rich keypoints
+						//drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+						//namedWindow("image", WINDOW_NORMAL);
+						//imshow("image", sampleWithKeyPoints);
+						//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
 
-				Mat sampleImage = image_array[2];								//sample to show keypoints
-				Mat sampleWithKeyPoints;										//output image with rich keypoints
-				//drawKeypoints(sampleImage, KeyPoints[2], sampleWithKeyPoints, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-				//namedWindow("image", WINDOW_NORMAL);
-				//imshow("image", sampleWithKeyPoints);
-				//undistortAllPoints(KeyPoints, undistortedKeyPoints , vecPending[0]); //undistort point has a bug so undistorting the image will be used at an earlier point 
+						dummyTriangulatePoints(pendingListingID);
+						dummyDensification();
 
-				dummyTriangulatePoints(pendingListingID);
-				dummyDensification();
+						MeshXYZToOBJ(pendingListingID);
 
-				MeshXYZToOBJ(pendingListingID);
+						successful = objToMySQL(pendingListingID);
 
-				successful = objToMySQL(pendingListingID);
-
-				std::cout << "Keypointed and Feature Detection complete" << std::endl;
-			
+						std::cout << "Keypointed and Feature Detection complete" << std::endl;
+					}
+					else{
+						successful = false; //Image load failed
+						failureReason = "Image load Failed";
+					}
+				}else{
+					successful = false; // cameraCalibration Failed
+					failureReason = "Calibration Failed";
+				}
 			}
 			else {
-				successful = false;
+				successful = false; // camera details not present
+				failureReason = "Camera Details not present";
 			}
-
 
 			image_array.clear();
 			KeyPoints.clear();
@@ -106,6 +110,7 @@ int main()
 				setStateAvailable(pendingListingID);
 			}
 			else {
+				std::cout << failureReason << std::endl;
 				setListingStateFailed(pendingListingID);
 			}
 			pendingListingID = -1;
@@ -121,11 +126,16 @@ int main()
 		//break; //TEMP BREAKCLAUSE FOR TESTING
 
 		cv::waitKey(0);
-
 	}
 }
 
+bool checkForLocalCalibration(int listingID) {
+	return false;
+}
+bool saveCameraDetails(int listingID, Mat cameraMatrix, Mat distCoeffs) {
 
+	return true;
+}
 int determinePending() { //returns list of pending listingID. Pending if the state is pending and the camer
 	int counter = 0;
 	int pendingID;
@@ -207,7 +217,6 @@ void setListingStateFailed(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-
 void setStateAvailable(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -240,11 +249,6 @@ void setStateAvailable(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-
-void undistortAllImages(vector<Mat> *ImageSet) {
-
-}
-
 void setStatePending(int listingID) {
 	try {
 		sql::Driver *driver;
@@ -279,7 +283,6 @@ void setStatePending(int listingID) {
 		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
 	}
 }
-
 int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 	int cameraID = findCameraID(listingID);
 	float tempFocusLength = 0;
@@ -334,8 +337,6 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 		return cameraID;
 	}
 }
-
-
 bool checkCameraParameters(int listingID) { //checks for camera information in database
 	if (findCameraID(listingID) != -1){
 		return true;
@@ -533,53 +534,60 @@ void featureMatching(vector<Mat> image_set, vector<vector<KeyPoint>> *keyPointVe
 	//imshow("Some OK Matches", imageMatches);
 }
 bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
+	bool localCalibrationExists = false;
+	localCalibrationExists = checkForLocalCalibration(listingID);
+	
+	if (!localCalibrationExists) {
+		std::cout << "Starting calibration on listing " << listingID << std::endl;
+		vector<Mat> image_set;
+		bool methodSuccess;
+		Size imageSetSize;                               //all the images need to be of a fixed resolution
+		Size chessboardSize = cv::Size(7, 9);
+		int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
+		vector<vector<Point2f>> cornersMatrix;
+		vector<Point2f> cornersTemp;
+		TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
+		int count = 0;
+		int cameraID = findCameraID(listingID);
 
-	std::cout << "Starting calibration on listing " << listingID << std::endl;
-	vector<Mat> image_set;
-	bool methodSuccess;
-	Size imageSetSize;                               //all the images need to be of a fixed resolution
-	Size chessboardSize = cv::Size(7, 9);
-	int squareSize = 20; //20mm default. https://www.mrpt.org/downloads/camera-calibration-checker-board_9x7.pdf
-	vector<vector<Point2f>> cornersMatrix;
-	vector<Point2f> cornersTemp;
-	TermCriteria criteria = TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON);
-	int count = 0;
-	int cameraID = findCameraID(listingID);
+		loadImageSetFromDatabase(&image_set, cameraID, true);
+		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
+		for (int i = 0; i < 10; i++) {
+			std::cout << "Finding Chessboard: " << i << std::endl;
+			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+			cornersMatrix.push_back(cornersTemp);
+			if (methodSuccess) {
+				std::cout << "Chessboard Detected" << std::endl;
+			}
+			else
+			{
+				std::cout << "Chessboard Not Detected " << std::endl;
+				cornersMatrix.push_back({});
+			}
+			count = count + 1;
+		}
 
-	loadImageSetFromDatabase(&image_set, cameraID, true);
-	imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
-	for (int i = 0; i < 10; i++) {
-		std::cout << "Finding Chessboard: " << i << std::endl;
-		methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
-		cornersMatrix.push_back(cornersTemp);
-		if (methodSuccess) {
-			std::cout << "Chessboard Detected" << std::endl;
-		}
-		else
-		{
-			std::cout << "Chessboard Not Detected " << std::endl;
-			cornersMatrix.push_back({});
-		}
-		count = count + 1;
+		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;
+		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+
+		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+
+		std::cout << "Constructing World Space Points Array" << std::endl;
+		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
+
+		Mat cameraMatrix;
+		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
+		vector<Mat>  rvec, tvec;  //Output
+		int flag = 0;
+
+		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+		return saveCameraDetails(listingID, cameraMatrix, distCoeffs);
+	}
+	else {
+		return true;
 	}
 
-	float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;  
-	vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
-
-	calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
-		
-	std::cout << "Constructing World Space Points Array" << std::endl;
-	worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
-	worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
-
-	Mat cameraMatrix;
-	Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
-	vector<Mat>  rvec, tvec;  //Output
-	int flag = 0;
-
-	calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-
-	return true;
 }
 bool MeshXYZToOBJ(int ListingID) {
 	std::string cmdFrag1 = "cd C:\\Program Files\\VCG\\MeshLab && meshlabserver -i c:\\MeshingFolder\\";
@@ -588,12 +596,7 @@ bool MeshXYZToOBJ(int ListingID) {
 
 	int code;
 	std::string listingIDString = to_string(ListingID);
-
-
 	std::string cmdString = cmdFrag1 + listingIDString + cmdFrag3 + listingIDString + cmdFrag5;
-	
-
-
 	const char* cmdCString = cmdString.c_str();
 	std::cout << "Meshing " << ListingID << ".xyz" << std::endl;
 	code = system(cmdCString);
@@ -609,7 +612,6 @@ bool MeshXYZToOBJ(int ListingID) {
 		std::cout << "Meshing failed. Error Code: " << code << std::endl;
 		return false;
 	}
-
 }
 int findCameraID(int listingID) {
 	int cameraID = -1;
@@ -797,16 +799,18 @@ bool objToMySQL(int listingID) {
 		String filename = "c:\\MeshingFolder\\" + listingIDSTR;
 		filename = filename + ".obj";
 
+
 		std::ifstream inObj(filename);
 		std::string data((std::istreambuf_iterator<char>(inObj)),(std::istreambuf_iterator<char>()));
 
+		std::cout << filename << " " << data.size() << std::endl;
 
 		std::string sqlInsert = "INSERT INTO Model (ModelID, ModelString, ListingID) VALUES (" + listingIDSTR;
 		sqlInsert = sqlInsert + ",\"" + data;
 		sqlInsert = sqlInsert + "\"," + listingIDSTR + ")";
 		stmt = con->createStatement();
 
-		if (data.size() < 20) { //prevents empty object being inserted into the DB 
+		if (data.size() > 20) { //prevents empty object being inserted into the DB 
 			stmt->execute(sqlInsert.c_str());
 			std::cout << "Inserted " << listingID << ".obj into DB" << std::endl;
 		}
