@@ -551,38 +551,44 @@ bool cameraCalibration(float focusLength, float sensorWidth, int listingID) {
 		int cameraID = findCameraID(listingID);
 
 		loadImageSetFromDatabase(&image_set, cameraID, true);
-		imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
-		for (int i = 0; i < 10; i++) {
-			std::cout << "Finding Chessboard: " << i << std::endl;
-			methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
-			cornersMatrix.push_back(cornersTemp);
-			if (methodSuccess) {
-				std::cout << "Chessboard Detected" << std::endl;
+		std::cout << image_set.size() << std::endl;
+		if (!(image_set.size() > 10 || image_set.size() < 8)) {
+			imageSetSize = cv::Size(image_set[0].size().width, image_set[0].size().height);
+			for (int i = 0; i < 10; i++) {
+				std::cout << "Finding Chessboard: " << i << std::endl;
+				methodSuccess = findChessboardCorners(image_set[count], chessboardSize, cornersTemp, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+				cornersMatrix.push_back(cornersTemp);
+				if (methodSuccess) {
+					std::cout << "Chessboard Detected" << std::endl;
+				}
+				else
+				{
+					std::cout << "Chessboard Not Detected " << std::endl;
+					cornersMatrix.push_back({});
+				}
+				count = count + 1;
 			}
-			else
-			{
-				std::cout << "Chessboard Not Detected " << std::endl;
-				cornersMatrix.push_back({});
-			}
-			count = count + 1;
+
+			float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;
+			vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
+
+			calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
+
+			std::cout << "Constructing World Space Points Array" << std::endl;
+			worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
+			worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
+
+			Mat cameraMatrix;
+			Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
+			vector<Mat>  rvec, tvec;  //Output
+			int flag = 0;
+
+			calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
+			return saveCameraDetails(listingID, cameraMatrix, distCoeffs);
 		}
-
-		float focalPixelLength = (focusLength / sensorWidth) * image_set[0].size().width;
-		vector<vector<Point3f>> worldSpacePoints(1); //the cordinates of the world space points of the calibration pattern
-
-		calcBoardCornerPositions(chessboardSize, squareSize, worldSpacePoints[0], 1);
-
-		std::cout << "Constructing World Space Points Array" << std::endl;
-		worldSpacePoints[0][chessboardSize.width - 1].x = worldSpacePoints[0][0].x + squareSize;
-		worldSpacePoints.resize(cornersMatrix.size(), worldSpacePoints[0]);
-
-		Mat cameraMatrix;
-		Mat distCoeffs = Mat::zeros(8, 1, CV_64F); //documentation notes this as an output only
-		vector<Mat>  rvec, tvec;  //Output
-		int flag = 0;
-
-		calibrateCamera(worldSpacePoints, cornersMatrix, imageSetSize, cameraMatrix, distCoeffs, rvec, tvec, flag); //calibrate camera is used to calculate the camera matrix and distortion coefficient.
-		return saveCameraDetails(listingID, cameraMatrix, distCoeffs);
+		else {
+			return false;
+		}
 	}
 	else {
 		return true;
