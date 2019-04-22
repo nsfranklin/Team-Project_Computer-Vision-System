@@ -148,12 +148,12 @@ int determinePending() { //returns list of pending listingID. Pending if the sta
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 		stmt = con->prepareStatement("SELECT ListingID FROM Product WHERE State = 'pending' AND CameraID IS NOT NULL LIMIT 1");
 		res = stmt->executeQuery();
@@ -190,12 +190,12 @@ void setListingStateFailed(int listingID) {
 		sql::PreparedStatement *stmt;
 		/* Create a connection */
 		driver = get_driver_instance();
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 
 		vector<uchar> buf = {};
@@ -227,12 +227,12 @@ void setStateAvailable(int listingID) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 		stmt = con->prepareStatement("UPDATE Product SET State = 'available' WHERE ListingID = ? AND State = 'pending';");
 		stmt->setInt(1,listingID);
@@ -259,12 +259,12 @@ void setStatePending(int listingID) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 			std::cout << "Set Test Listing to pending" << std::endl;
 
@@ -296,12 +296,12 @@ int loadCameraDetails(int listingID, float &focusLength, float &sensorWidth) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 		stmt = con->prepareStatement("SELECT FocusLength, SensorSize FROM CameraDetails WHERE CameraID = ? AND FocusLength IS NOT NULL AND SensorSize IS NOT NULL");
 		stmt->setInt(1, cameraID);
@@ -353,12 +353,12 @@ void insertImages(vector<Mat> *image_set, int listingID, int length) {
 		sql::PreparedStatement *stmt;
 		/* Create a connection */
 		driver = get_driver_instance();
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 
 		vector<uchar> buf = {};
@@ -405,11 +405,11 @@ void loadImageSetFromDatabase(vector<Mat> *image_set, int tableID, bool isCalibr
 		std::string table , column;
 
 		driver = get_driver_instance();
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 		if (isCalibration) {
 			stmt = con->prepareStatement("SELECT ImageBlob FROM CaliImage WHERE CameraID = ?");
@@ -630,12 +630,12 @@ int findCameraID(int listingID) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 		stmt = con->prepareStatement("SELECT CameraID FROM Product WHERE ListingID = ? AND CameraID IS NOT NULL");
 		stmt->setInt(1, listingID);
@@ -747,12 +747,12 @@ void objToMySQL(String filename, int listingID, int modelID) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 
 
@@ -794,12 +794,12 @@ bool objToMySQL(int listingID) {
 		/* Create a connection */
 		driver = get_driver_instance();
 
-		std::cout << "Attempting to Connect" << std::endl;
+		//std::cout << "Attempting to Connect" << std::endl;
 		con = driver->connect("cteamteamprojectdatabase.csed5aholavi.eu-west-2.rds.amazonaws.com:3306", "nsfranklin", "KEigQqfLiLKy2kXzdwzN");
 		
 		con->setSchema("cTeamTeamProjectDatabase");
 		if (!(con->isClosed())) {
-			std::cout << "Connection Open" << std::endl;
+			//std::cout << "Connection Open" << std::endl;
 		}
 
 		String filename = "c:\\MeshingFolder\\" + listingIDSTR;
